@@ -8,3 +8,21 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Browser/scraping junk
+downloaded_files/
+
+# Data files — never commit raw data, it's regenerable
+data/raw/
+data/processed/
+data/interim/
+*.csv
+*.parquet
+*.duckdb
+
+# Editor
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
