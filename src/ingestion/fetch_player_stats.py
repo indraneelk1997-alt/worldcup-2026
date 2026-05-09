@@ -1,8 +1,12 @@
 """
-Fetch player season stats from FBref.
+Fetch player season stats from Understat.
 
 V1.01: Premier League only, last completed season (2024-2025).
-We'll expand to more leagues in future versions.
+We use Understat (not FBref) because it provides npxG and xA natively
+and avoids FBref's Cloudflare bot protection issues.
+
+Coverage: top-5 European leagues. UCL/UEL not available on Understat
+(deferred to V1.02+).
 """
 
 import logging
@@ -18,18 +22,16 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Where to save the raw data
-# This file is at: src/ingestion/fetch_player_stats.py
-# So the project root is two folders up: ../../
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw"
 
 
 def fetch_premier_league(season: str = "2024-2025"):
-    """Fetch standard player stats for one Premier League season."""
-    logger.info(f"Fetching Premier League stats for {season}")
+    """Fetch player season stats from Understat for one Premier League season."""
+    logger.info(f"Fetching Premier League stats for {season} from Understat")
 
-    fbref = sd.FBref(leagues="ENG-Premier League", seasons=season)
-    df = fbref.read_player_season_stats(stat_type="standard")
+    understat = sd.Understat(leagues="ENG-Premier League", seasons=season)
+    df = understat.read_player_season_stats()
 
     logger.info(f"Got {len(df)} player rows")
 
@@ -37,7 +39,7 @@ def fetch_premier_league(season: str = "2024-2025"):
     RAW_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     # Save as CSV (human-readable, easy to inspect)
-    output_path = RAW_DATA_DIR / f"epl_player_stats_{season}.csv"
+    output_path = RAW_DATA_DIR / f"epl_player_stats_understat_{season}.csv"
     df.to_csv(output_path)
     logger.info(f"Saved to {output_path}")
 
