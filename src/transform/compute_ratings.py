@@ -46,7 +46,9 @@ def compute_ratings(season: str = "2024-2025") -> pd.DataFrame:
         )
 
     logger.info(f"Loading raw data from {raw_path}")
-    df = pd.read_csv(raw_path, index_col=0)
+    # Raw CSV has 4 index columns (league, season, team, player) before data.
+    # Read all columns flat — easier to work with as regular DataFrame.
+    df = pd.read_csv(raw_path)
     logger.info(f"Loaded {len(df)} player rows")
 
     # Filter
@@ -64,7 +66,9 @@ def compute_ratings(season: str = "2024-2025") -> pd.DataFrame:
     # Sort and select columns we care about
     qualified = qualified.sort_values("rating_per_90", ascending=False)
     output_cols = [
+        "player_id",
         "player",
+        "team_id",
         "team",
         "position",
         "matches",
