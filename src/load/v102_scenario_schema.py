@@ -31,6 +31,14 @@ FOREIGN-KEY TYPE NOTE (resolved in this version)
     (Understat fixture IDs are string identifiers from the source, stored
     as VARCHAR). DuckDB requires foreign-key column types to match exactly,
     so this matters. Verified via DESCRIBE fixtures before writing.
+
+S5 PATCH (post-lock adjustment, documented here for traceability)
+    scenario_teams.formation was originally declared NOT NULL. In S5 we
+    decided that legacy V1.01 trial data (top-11 by rating, pre-formation)
+    has no real formation to assign — NULL is the honest value. The
+    constraint is relaxed here. New scenarios from V1.02 onward should
+    always provide a formation; the model code, not the schema, enforces
+    that going forward.
 """
 
 import duckdb
@@ -113,17 +121,21 @@ DDL_STATEMENTS = [
     CREATE TABLE IF NOT EXISTS lineup_scenarios (
         scenario_id   INTEGER PRIMARY KEY,
         fixture_id    VARCHAR NOT NULL REFERENCES fixtures(fixture_id),
-        scenario_type VARCHAR NOT NULL,   -- intended values: auto_top11 | predicted | actual | manual
+        scenario_type VARCHAR NOT NULL,   -- intended values: auto_top11 | predicted | actual | manual | legacy_v1.01
         label         VARCHAR,            -- human-readable, e.g. "Palace 4-3-3 Sarr"
         created_at    TIMESTAMP DEFAULT now()
     )
     """,
+    # NOTE on scenario_teams.formation: nullable on purpose.
+    # Legacy V1.01 trial data has no real formation (XI was picked top-11 by
+    # rating, pre-formation-aware). NULL is the honest value for those rows.
+    # Application code should require a formation for any new V1.02+ scenario.
     """
     CREATE TABLE IF NOT EXISTS scenario_teams (
         scenario_id INTEGER NOT NULL REFERENCES lineup_scenarios(scenario_id),
         side        VARCHAR NOT NULL CHECK (side IN ('home','away')),
         team        VARCHAR NOT NULL,     -- matches player_season_stats.team (no teams table yet)
-        formation   VARCHAR NOT NULL REFERENCES formations(formation),
+        formation   VARCHAR REFERENCES formations(formation),   -- nullable; see note above
         PRIMARY KEY (scenario_id, side)
     )
     """,
