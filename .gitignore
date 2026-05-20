@@ -16,7 +16,6 @@ downloaded_files/
 data/raw/
 data/processed/
 data/interim/
-*.csv
 *.parquet
 *.duckdb
 

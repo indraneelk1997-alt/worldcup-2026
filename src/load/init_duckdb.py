@@ -50,12 +50,10 @@ def init_database(season: str = "2024-2025") -> None:
 
     try:
         # ── Create `players` table ──────────────────────────────────────
-        # WHY: drop-then-create makes this script safe to re-run.
-        # For V1.01 with 397 rows, this is instant.
-        con.execute("DROP TABLE IF EXISTS player_season_stats")  # drop child first (FK)
-        con.execute("DROP TABLE IF EXISTS players")
+        # WHY: IF NOT EXISTS makes this idempotent across multiple seasons.
+        # Previous versions used DROP TABLE which destroyed cross-season data.
         con.execute("""
-            CREATE TABLE players (
+            CREATE TABLE IF NOT EXISTS players (
                 player_id    INTEGER  PRIMARY KEY,
                 player_name  VARCHAR  NOT NULL
             )
@@ -64,7 +62,7 @@ def init_database(season: str = "2024-2025") -> None:
 
         # ── Create `player_season_stats` table ──────────────────────────
         con.execute("""
-            CREATE TABLE player_season_stats (
+            CREATE TABLE IF NOT EXISTS player_season_stats (
                 player_id      INTEGER  NOT NULL REFERENCES players(player_id),
                 season         VARCHAR  NOT NULL,
                 team           VARCHAR  NOT NULL,
@@ -83,11 +81,11 @@ def init_database(season: str = "2024-2025") -> None:
         logger.info("Created table: player_season_stats")
 
         # ── Load players (deduped) from the CSV ─────────────────────────
-        # WHY: a single player might appear in N season-rows (mid-season transfer
-        # → 2 rows for one season). The `players` table needs each player exactly
-        # once, so we DISTINCT on player_id.
+        # WHY: a player might appear across multiple seasons. INSERT OR IGNORE
+        # skips rows whose player_id already exists (PK conflict) without raising
+        # an error. Same player_id always means the same player, so this is safe.
         con.execute(f"""
-            INSERT INTO players (player_id, player_name)
+            INSERT OR IGNORE INTO players (player_id, player_name)
             SELECT DISTINCT player_id, player AS player_name
             FROM read_csv_auto('{csv_path}')
         """)
