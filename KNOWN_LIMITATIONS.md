@@ -261,3 +261,52 @@ one clear most-minutes GK, so this is a theoretical concern only.
 **Plan:** V1.03+ with defensive metrics could add `xGA per 90 against`
 or `clean sheets per 90` to the model and give GKs a real score
 contribution.
+
+### V1.02 ships with two simulator variants: unweighted (primary) and weighted (diagnostic)
+**What:** The V1.02 simulator computes team strength two ways and writes
+both predictions to the `predictions` table per fixture:
+- `v1.02_unweighted`: strength = SUM(0.75 × shrunk_form + 0.25 ×
+  shrunk_consistency) across the XI. Primary V1.02 model.
+- `v1.02_weighted`: same blended rating × OFFENSIVE_WEIGHT[position_code]
+  using an 18-code class-anchored weight table. Diagnostic only.
+
+**Evidence:** On the MD38 fixture slate, the two variants disagreed by >5
+percentage points on at least one outcome in 8 of 10 fixtures. The weighted
+variant systematically pulls predictions toward equality (Sunderland-Chelsea:
+unweighted 86% Chelsea win → weighted 48% Chelsea win; Crystal Palace-Arsenal:
+unweighted 68% Arsenal win → weighted 36% Arsenal win). This contradicts
+real-world league standings (Sunderland 19th, Chelsea top-6).
+
+**Impact:** The weighted variant double-counts the position effect:
+rating_per_90 is already an offensive metric (it's npxG+xA per 90), so
+applying offensive position weights on top compresses the strength delta
+between strong and weak teams. The unweighted variant produces more
+calibrated predictions for top-vs-bottom matchups.
+
+**Plan:** Keep both in predictions for retrospective comparison once MD38
+results land (May 24, 2026). V1.03 should redesign position weighting
+differently — possibly by applying weights to selection only (already done in
+S8), OR by using position-conditional strength (e.g., counts of high-rated
+forwards alone) instead of multiplying every player's rating.
+
+### Linear-differential xG formula breaks at extreme strength gaps
+**What:** `xG_away = max(0, BASE_GOALS - HOME_BONUS + K × (strength_away -
+strength_home))`. When the home team's strength substantially exceeds the
+away team's, away xG floors at zero.
+
+**Evidence:** Manchester City vs Aston Villa unweighted: away xG = 0.22
+(implying Villa nearly incapable of scoring). Villa are 4th in the EPL —
+not a sub-0.5-xG side against anyone. The City strength advantage
+(probably ~2.0+ blended rating units) overwhelms BASE_GOALS in the linear
+formula.
+
+**Impact:** Predictions for top-vs-bottom fixtures under-estimate underdog
+scoring chances. The Poisson sim then under-predicts >1 goal away outcomes.
+
+**Plan:** V1.03+ should consider:
+1. A saturating xG function (e.g. `BASE_GOALS × exp(K × diff)` or logistic).
+2. Strength normalization (e.g. divide each side's strength by league mean).
+3. Empirical recalibration of `K` after seeing predicted-vs-actuals.
+
+This is inherited from V1.01's calibration. V1.02 retains it for
+comparability.
