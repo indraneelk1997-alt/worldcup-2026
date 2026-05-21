@@ -126,3 +126,138 @@ baseline rather than purely chasing current-season noise.
 predictions feel "form-blind" (over-weighting career when current
 form is signal), drop toward 0.5. If they feel chasing-noise, push
 toward 0.85. Logged per-prediction so retrospective tuning is easy.
+
+### Realistic XI selection uses heuristic position multipliers + hybrid slot bonuses
+**What:** XI selection for each team-season runs the Hungarian assignment
+algorithm (`scipy.optimize.linear_sum_assignment`) over a cost matrix
+built from blended shrunk ratings (0.75 × form + 0.25 × consistency)
+multiplied by position-class weights and slot bonuses:
+- Class multipliers: DEF = 2.0, MID = 1.25, FWD = 1.0, GK = locked-in
+  by minutes
+- Hybrid slot bonus: 1.1× for players whose Understat eligibility
+  includes both halves of a hybrid role (DEF+MID for DM/LWB/RWB slots,
+  FWD+MID for CAM slots)
+
+**Evidence:** First attempt used DEF=4, MID=2, FWD=1 and produced
+catastrophically defender-heavy XIs (135 DEF vs 16 FWD across 20 teams,
+~7 defenders per team). After dropping to DEF=2/MID=1.5/FWD=1 with
+hybrid bonus 1.2, MID-heavy formations dominated (14/20 teams' best
+fit was 4-2-3-1). Further tuning to MID=1.25 / bonus=1.1 made minor
+differences (1 team flipped to 4-4-2 as #1, total class distribution
+barely moved). The model's behavior is now dominated by formation
+shape, not multipliers — exactly the design intent.
+
+**Impact:** Realistic XIs that match roster-strength intuition. Liverpool's
+top fit is 3-4-2-1 with Salah at MID — defensible given his drift between
+roles, but acknowledges the model exploits hybrid eligibility for MID
+slots (1.25 × 1.1 = 1.375x effective weight) over pure FWD slots (1.0x).
+A pure forward without midfielder eligibility will rank lower at FWD
+than a hybrid will at MID for equal raw rating.
+
+**Plan:** Re-tune when MD38 predictions land. If results suggest the
+formation distribution doesn't match real outcomes, drop MID toward
+1.0 or remove the hybrid stack entirely (use max-of, not multiply).
+
+### Wing-backs are classified as DEF, not MID
+**What:** In all back-3/back-5 formations (3-4-3, 3-5-2, 3-4-2-1,
+5-3-2, 5-4-1), the LWB and RWB slots are seeded with `position_class`
+= DEF, not MID.
+
+**Evidence:** Wing-backs structurally are part of the defensive line
+but functionally provide width and attacking output. Classifying them
+correctly is a play-style question that V1.03's per-match data will
+resolve.
+
+**Impact:** A pure wing-back (Frimpong, Bogle, Hume) gets weighted as
+a DEF (2.0x multiplier), which over-weights their attacking
+contribution. In practice, hybrid eligibility usually triggers the
+slot bonus, so the effective multiplier is 2.0 × 1.1 = 2.2x for
+wing-back-positioned hybrid players.
+
+**Plan:** V1.03 per-match data + SoFIFA play-styles will allow
+position assignment by actual role rather than formation slot.
+
+### Multi-position handling: first-token-wins for primary class, full set for eligibility
+**What:** Understat returns a `position` field as a space-separated
+string of single-letter codes (e.g. 'D M S' for a defender who also
+played midfield, where 'S' marks substitute appearances). Two parallel
+stores derived from this:
+- `player_season_stats.position_class` = the first non-S token's class,
+  representing the "primary role" Understat thinks the player plays.
+- `player_positions` (separate table) = one row per (player, season,
+  team, position_class) with a `priority` field (1 = primary, 2+ =
+  secondary). Used for multi-eligibility in lineup selection.
+
+A consistency invariant is enforced at backfill time: every
+`player_season_stats` row must have a `priority=1` row in
+`player_positions` with matching class.
+
+**Evidence:** ~30% of EPL players in 2025-2026 have multi-class
+eligibility (e.g., Szoboszlai → DEF, FWD, MID; Salah → FWD, MID).
+
+**Impact:** Lineup selection considers all eligible classes per
+player. The first-token-wins primary class is used wherever a single
+class is needed (shrinkage prior calc by class — deferred to V1.03 —
+and convenience queries).
+
+**Plan:** V1.03 per-match data will allow per-position minutes-weighted
+priority instead of trusting Understat's ordering. Inverted wingers in
+3-4-2-1 (currently classified RW/LW/CAM) will get proper
+inside-forward designation.
+
+### `best_xi` is a standalone artifact, not tied to fixtures
+**What:** The `best_xi` table holds top-3 ranked XIs per team-season
+across all 10 formations, independent of any fixture. Schema is
+keyed on `(season, team, formation, rank, slot_no)`.
+
+**Evidence:** S8 found MD38 fixtures were never loaded into the
+`fixtures` table (only the trial fixture exists). Rather than block
+on fixture loading, lineup selection was shipped as a standalone
+queryable artifact.
+
+**Impact:** Predictions cannot run end-to-end against `best_xi`
+directly — they need a fixture to anchor scenarios. The next step
+(MD38 prediction run) requires loading MD38 fixtures into `fixtures`
+and bridging via `lineup_scenarios + scenario_teams + fixture_lineups`,
+using `best_xi` rows as the lineup source.
+
+**Plan:** Load MD38 fixtures + season string normalization (the
+`fixtures` table currently uses '2024-25' short form, while
+`player_season_stats` uses '2024-2025' — needs reconciliation).
+Then write a fixture-to-scenario bridge.
+
+### Formation library is 10 four-defender and three-defender shapes
+**What:** Library: 4-3-3, 4-2-3-1, 4-4-2, 4-1-4-1, 4-5-1, 3-4-3,
+3-5-2, 3-4-2-1, 5-3-2, 5-4-1. Excludes 3-3-3-1 (rare), 4-3-1-2 (narrow
+diamond, rare in EPL), and 4-2-2-2 (more common in Germany/Brazil).
+
+**Evidence:** Initial library was 4 formations (all back-4). S8
+expanded to 10 to enable real "which formation fits this roster best"
+analysis. Selection results: 13/20 teams' #1 is 4-2-3-1, 6/20 is
+3-4-2-1, 1/20 is 4-4-2. Matches modern EPL formation distribution
+roughly.
+
+**Impact:** A team that genuinely best fits a non-library formation
+(e.g., narrow 4-3-1-2) gets matched to the closest library shape,
+not its actual optimal.
+
+**Plan:** Expand library as needed in V1.03+ if real-world fixture
+results suggest specific formations are systematically missing.
+
+### Total XI score uses outfielder scores only (GK contribution = 0)
+**What:** `best_xi.total_xi_score` is the sum of the 10 outfielders'
+`selection_score` values. The GK contributes nothing because:
+1. GK is locked-in deterministically by most minutes — same player
+   chosen regardless of formation.
+2. GK's `rating_per_90` is near-zero (it measures npxG+xA, which GKs
+   don't generate).
+
+**Evidence:** No good signal exists in our data to score GK quality.
+
+**Impact:** Two teams with identical outfielders but different GK
+choices would tie on `total_xi_score`. In practice, every team has
+one clear most-minutes GK, so this is a theoretical concern only.
+
+**Plan:** V1.03+ with defensive metrics could add `xGA per 90 against`
+or `clean sheets per 90` to the model and give GKs a real score
+contribution.
