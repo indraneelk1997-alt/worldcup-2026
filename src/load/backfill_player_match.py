@@ -293,14 +293,22 @@ def main():
                 print(f"  Inserted {len(new_players_to_insert)} new "
                       f"players.")
 
-            # 10b. Wipe player_match_stats FIRST (it has FK to games).
+            # 10b. Wipe child tables of games FIRST (FK ordering):
+            #   - player_match_stats.game_id -> games.game_id (S10/A1)
+            #   - team_match_stats.game_id   -> games.game_id (S10/A2)
+            # Both must be empty for the given season before games can
+            # be wiped, or DuckDB raises ConstraintException.
             for season in seasons:
                 con.execute(
                     "DELETE FROM player_match_stats WHERE season = ?",
                     [season],
                 )
-            # 10c. Wipe games (no FK from games to anything else; safe
-            # to wipe by season).
+                con.execute(
+                    "DELETE FROM team_match_stats WHERE season = ?",
+                    [season],
+                )
+            # 10c. Wipe games (now safe -- all children for these seasons
+            # have been wiped above).
             for season in seasons:
                 con.execute(
                     "DELETE FROM games WHERE season = ?",
