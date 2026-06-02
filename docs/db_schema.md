@@ -1,6 +1,6 @@
 # DuckDB schema reference
 
-_Generated: 2026-06-01T12:45:38_  
+_Generated: 2026-06-02T13:04:26_  
 _DB: `data/processed/worldcup.duckdb`_  
 _Tables: 24_  
 
@@ -115,6 +115,7 @@ uv run python src/tools/dump_db_schema.py
 | `home_team` | `VARCHAR` | NO |  |
 | `away_team` | `VARCHAR` | NO |  |
 | `matchday` | `INTEGER` | YES |  |
+| `league` | `VARCHAR` | YES |  |
 
 **Declared foreign keys**: none
 
@@ -127,6 +128,7 @@ uv run python src/tools/dump_db_schema.py
   home_team = 'Arsenal'
   away_team = 'Liverpool'
   matchday = None
+  league = 'ENG-Premier League'
 ```
 
 ### `formation_slots`
@@ -179,6 +181,7 @@ uv run python src/tools/dump_db_schema.py
 | `match_date` | `DATE` | NO |  |
 | `home_team` | `VARCHAR` | NO |  |
 | `away_team` | `VARCHAR` | NO |  |
+| `league` | `VARCHAR` | YES |  |
 
 **Declared foreign keys**: none
 
@@ -190,6 +193,7 @@ uv run python src/tools/dump_db_schema.py
   match_date = datetime.date(2024, 8, 16)
   home_team = 'Manchester United'
   away_team = 'Fulham'
+  league = 'ENG-Premier League'
 ```
 
 ### `league_averages_v103`
@@ -203,6 +207,7 @@ uv run python src/tools/dump_db_schema.py
 | `league_avg_ppda` | `DOUBLE` | NO |  |
 | `n_team_matches` | `INTEGER` | NO |  |
 | `created_at` | `TIMESTAMP` | YES |  |
+| `league` | `VARCHAR` | NO |  |
 
 **Declared foreign keys**: none
 
@@ -214,6 +219,7 @@ uv run python src/tools/dump_db_schema.py
   league_avg_ppda = 12.55532680261568
   n_team_matches = 760
   created_at = datetime.datetime(2026, 5, 22, 16, 1, 34, 240711)
+  league = 'ENG-Premier League'
 ```
 
 ### `lineup_scenarios`
@@ -416,6 +422,7 @@ uv run python src/tools/dump_db_schema.py
 | `key_passes` | `INTEGER` | NO |  |
 | `yellow_cards` | `INTEGER` | NO |  |
 | `red_cards` | `INTEGER` | NO |  |
+| `league` | `VARCHAR` | NO |  |
 
 **Declared foreign keys** (per `duckdb_constraints()`):
 
@@ -444,6 +451,7 @@ uv run python src/tools/dump_db_schema.py
   key_passes = 0
   yellow_cards = 0
   red_cards = 0
+  league = 'ENG-Premier League'
 ```
 
 ### `player_positions`
@@ -534,6 +542,7 @@ uv run python src/tools/dump_db_schema.py
 | `primary_position_class_v103` | `VARCHAR` | YES |  |
 | `shrunk_form_eb_class` | `DOUBLE` | YES |  |
 | `shrunk_consistency_eb_class` | `DOUBLE` | YES |  |
+| `league` | `VARCHAR` | NO |  |
 
 **Declared foreign keys** (per `duckdb_constraints()`):
 
@@ -563,6 +572,7 @@ uv run python src/tools/dump_db_schema.py
   primary_position_class_v103 = 'FWD'
   shrunk_form_eb_class = 0.8740806073539971
   shrunk_consistency_eb_class = 0.7719511861294119
+  league = 'ENG-Premier League'
 ```
 
 ### `players`
@@ -740,6 +750,7 @@ uv run python src/tools/dump_db_schema.py
 | `opponent_ppda` | `DOUBLE` | NO |  |
 | `deep_completions` | `INTEGER` | NO |  |
 | `opponent_deep_completions` | `INTEGER` | NO |  |
+| `league` | `VARCHAR` | NO |  |
 
 **Declared foreign keys** (per `duckdb_constraints()`):
 
@@ -766,6 +777,7 @@ uv run python src/tools/dump_db_schema.py
   opponent_ppda = 10.833333333333334
   deep_completions = 7
   opponent_deep_completions = 3
+  league = 'ENG-Premier League'
 ```
 
 ### `team_season_strength_v103`
@@ -781,6 +793,7 @@ uv run python src/tools/dump_db_schema.py
 | `avg_xg_allowed` | `DOUBLE` | NO |  |
 | `avg_ppda_pressing` | `DOUBLE` | NO |  |
 | `created_at` | `TIMESTAMP` | YES |  |
+| `league` | `VARCHAR` | NO |  |
 
 **Declared foreign keys**: none
 
@@ -794,6 +807,7 @@ uv run python src/tools/dump_db_schema.py
   avg_xg_allowed = 1.0521016236842107
   avg_ppda_pressing = 9.43274286965661
   created_at = datetime.datetime(2026, 5, 22, 16, 1, 34, 228139)
+  league = 'ENG-Premier League'
 ```
 
 ---
@@ -827,6 +841,16 @@ uv run python src/tools/dump_db_schema.py
 - `team_match_predictions_b12` *(PK)*
 - `team_match_stats` *(PK)*
 - `team_season_strength_v103` *(PK)*
+
+### `league` (7 tables)
+
+- `fixtures`
+- `games`
+- `league_averages_v103`
+- `player_match_stats`
+- `player_season_stats`
+- `team_match_stats`
+- `team_season_strength_v103`
 
 ### `player_id` (7 tables)
 

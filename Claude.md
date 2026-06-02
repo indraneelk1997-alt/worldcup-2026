@@ -80,8 +80,19 @@ These are the hard-won rules. They override default helpfulness.
   ADD plain column → UPDATE backfill → `ALTER COLUMN ... SET NOT NULL`.
 - **`SET NOT NULL` cannot run in the same transaction as the UPDATE that
   backfilled the rows** ("Cannot create index with outstanding
-  updates"). The backfill must be committed first. (Confirmed S16;
-  fix approach in `docs/session_state.md` until verified + folded here.)
+  updates"). The backfill must be committed first. (S16, verified S17
+  in-memory.) Practical consequence: don't wrap a multi-step migration
+  in one outer transaction. Per-statement autocommit, idempotent re-run.
+- **`ALTER COLUMN ... SET NOT NULL` is blocked on FK-referenced tables.**
+  Any ALTER on a table other tables hold a declared FK into raises
+  `Dependency Error: Cannot alter entry 'X' because there are entries
+  that depend on it` (S17, [duckdb/duckdb#17348](https://github.com/duckdb/duckdb/issues/17348)).
+  DuckDB has no `DROP/ADD CONSTRAINT` ([#4204](https://github.com/duckdb/duckdb/discussions/4204))
+  and no `PRAGMA foreign_keys = OFF` ([#4205](https://github.com/duckdb/duckdb/discussions/4205)),
+  so the Postgres-style "drop FKs, alter, re-add" workaround is closed.
+  Enforce non-nullity in app code for FK-referenced tables. Detect at
+  runtime via `duckdb_constraints() WHERE constraint_type='FOREIGN KEY'
+  AND referenced_table = ?` (caveat: this view under-reports — see below).
 - DuckDB lacks `ADD COLUMN IF NOT EXISTS` — check column existence first
   for idempotency.
 - DuckDB `ALTER` doesn't support CHECK constraints — enforce in app code.
