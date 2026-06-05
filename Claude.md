@@ -105,9 +105,29 @@ These are the hard-won rules. They override default helpfulness.
 
 - La Liga via Understat works; columns identical to Premier League
   (29 cols: `home_team`, `away_team`, `home_xg`, etc.).
-- Understat returns a `league` column natively (e.g. `'ESP-La Liga'`).
+- Understat returns a `league` value as a **MultiIndex level**, NOT a
+  column (verified S18). All three Understat endpoints
+  (`read_schedule`, `read_player_match_stats`, `read_team_match_stats`)
+  use the same MultiIndex shape with `league` at level 0. Strings are
+  `'ENG-Premier League'`, `'ESP-La Liga'`, etc. — soccerdata's
+  canonical league codes, used for both input (`leagues=[...]`) and
+  output. No translation needed.
+- `season` MultiIndex value is `'2425'` / `'2526'`; our DB uses
+  `'2024-2025'` / `'2025-2026'`. V1.04's `ingest_understat.py` has
+  a `SEASON_DB_TO_SD` map; V1.03 had `SEASON_MAP`. Both still in use.
 - Understat `game_id` space is global across leagues — no collision risk.
+- Understat data can occasionally contain **whole-game duplicate rows**
+  in `read_player_match_stats` — every player from a single match
+  appears twice, byte-for-byte identical. PK on `(game_id, player_id)`
+  + `INSERT OR IGNORE` handles it cleanly with no information loss.
+  Confirmed example (S18): La Liga 2025-26 `game_id=29482` (Villarreal
+  vs Real Oviedo) — 32 player rows duplicated.
 - Each top-5 league: 20 teams × 38 matchdays = 380 matches/season.
+- `players` is a FK parent of `player_match_stats` — any loader that
+  writes to `player_match_stats` must INSERT OR IGNORE new
+  `(player_id, player_name)` pairs into `players` first. V1.04's
+  `ingest_understat.py` does this inside Section B; V1.03 mirrors in
+  `backfill_player_match.py` step 10a and `load_md38_actuals.py`.
 
 ## External references
 
