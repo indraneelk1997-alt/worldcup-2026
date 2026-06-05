@@ -3,129 +3,128 @@
 > **Fast-changing.** This is "where we are right now." Updated at the end
 > of each working session. For permanent facts/rules, see `Claude.md`.
 
-**Last updated:** end of S18 (2026-06-04)
+**Last updated:** end of S19 (2026-06-05)
 **Current version line:** V1.04 ingest (multi-league)
 
 ## Latest repo state (verify with `git log` / `git status` at session start)
 
-- Branch: `main`. At S18 start, HEAD was `c5bc110 S17: V1.04 league
-  column migration (mixed enforcement) applied`.
-- S18 work uncommitted at end of session (see Deferred).
+- Branch: `main`. At S19 start, HEAD was `7504687 S18: V1.04 Understat
+  ingest; La Liga 2024-25 + 2025-26 loaded`. `docs/db_schema.md` was
+  modified-uncommitted (carryover from end of S18).
+- S19 work uncommitted at end of session (see Deferred).
 - **Verify before trusting this** — run `git log --oneline -5` and
   `git status --short` first. (Observe, don't infer.)
 
-## ✅ S18 outcome — V1.04 Understat ingest landed; La Liga loaded clean
+## ✅ S19 outcome — Big 3 loaded; 9 of 10 (league, season) pairs in
 
 ### What shipped
-- `docs/v104_ingest_understat.md` — design doc capturing all S18
-  decisions (Option C league policy, load-order (a), effective_position
-  extraction, unpivot, Section-B players precondition).
-- `src/load/v2_ingest/_position_policy.py` — extracted
-  `compute_effective_position` from V1.03 (byte-for-byte logic; V1.03
-  files NOT updated per architecture doc's "migrate on break" rule).
-- `src/load/v2_ingest/ingest_understat.py` — V1.04 loader, parametrized
-  by `(league, season)`. Three sections (games, player_match_stats,
-  team_match_stats), with implicit `players` dimension maintenance
-  inside Section B. INSERT OR IGNORE everywhere; no outer transaction
-  (S17 carry-forward).
-- `Claude.md` — appended several soccerdata/Understat gotchas
-  discovered during S18 (MultiIndex shape, season translation,
-  whole-game duplicates, `players` FK ordering).
+- `src/tools/validate_v104_ingest.py` — new post-load validation
+  script. Read-only. Reports coverage matrix per `(league, season)`,
+  NULL-league audit, game/team/player counts, the 2× team_match
+  invariant, FK integrity spot-checks, grand totals, cross-league
+  carryover. Used as the close-out diagnostic for S19; should be
+  re-run any time we add or repair a league.
+- Six load attempts via a bash double-loop over
+  `{Serie A, Bundesliga, Ligue 1} × {2024-2025, 2025-2026}`.
 
-### La Liga ingest results
+### Load results
 
-| Season  | games | player_match | team_match | players added |
-|---------|------:|-------------:|-----------:|--------------:|
-| 2024-25 |   380 |       11,900 |        760 |           574 |
-| 2025-26 |   380 |       11,952 |        760 |           234 |
+| League / Season              | games | player_match | team_match | players added |
+|------------------------------|------:|-------------:|-----------:|--------------:|
+| ITA-Serie A     2024-2025    |   380 |       11,888 |        760 |     (no log, in chain after carryover) |
+| ITA-Serie A     2025-2026    |   380 |       11,928 |        760 |     (some partial-resume from interrupted batch) |
+| GER-Bundesliga  2024-2025    |   **0** | **0**      |    **0**   |     **FAILED — see below** |
+| GER-Bundesliga  2025-2026    |   306 |        9,555 |        612 |    459 |
+| FRA-Ligue 1     2024-2025    |   306 |        9,413 |        612 |    455 |
+| FRA-Ligue 1     2025-2026    |   306 |        9,386 |        610 |    240 |
 
-DB state after S18:
-- `games`            : 1,520 rows (760 PL + 760 La Liga)
-- `players`          : 1,564 rows
-- `player_match_stats`: 46,909 rows
-- `team_match_stats` : 3,040 rows
+DB grand totals after S19:
+- `games`             : 3,198 rows
+- `players`           : 3,465 rows
+- `player_match_stats`: 99,079 rows
+- `team_match_stats`  : 6,394 rows
+- 7 league-bearing tables: zero NULL `league` values
+- FK integrity: zero orphans across all checked relationships
+- 266 player_ids appear in 2+ leagues (cross-league
+  transfers / shared IDs)
 
-### Anomalies observed and resolved
+### ⚠️ OPEN — GER-Bundesliga 2024-25 NOT loaded
 
-1. **Initial dry-run masked a FK gap.** V1.03 populates `players`
-   before `player_match_stats` because of the declared FK. I missed
-   this on the first design pass; the dry-run didn't surface it
-   because the read-only connection never attempts inserts. Caught on
-   review of the first dry-run output. Loader + design doc patched
-   before any live run.
-2. **32 duplicate rows in La Liga 2025-26 player_match.** All from a
-   single game (`game_id=29482`, Villarreal vs Real Oviedo); each
-   duplicate group is byte-for-byte identical. Understat source-data
-   quirk. INSERT OR IGNORE drops the redundant copy with no
-   information loss. Gotcha banked in `Claude.md`.
+Source of failure (verified, not inferred): soccerdata's own parser,
+not our loader.
 
-### Test plan execution (from `docs/v104_ingest_understat.md`)
-1. La Liga 2024-25, dry-run ✅
-2. La Liga 2024-25, live ✅
-3. La Liga 2025-26, dry-run ✅
-4. La Liga 2025-26, live ✅
-5. Re-run La Liga 2024-25 (idempotency) ✅ — all sections 100% skipped
-
-## Active task: Big 3 leagues (build-sequence step 4)
-
-Load Serie A, Bundesliga, Ligue 1 — each for both 2024-2025 and
-2025-2026 seasons. Same loader, no code changes expected.
-
-Pattern per league:
 ```
-uv run python src/load/v2_ingest/ingest_understat.py \
-    --league "<LEAGUE>" --season "2024-2025" --dry-run
-# eyeball
-uv run python src/load/v2_ingest/ingest_understat.py \
-    --league "<LEAGUE>" --season "2024-2025"
-# repeat for 2025-2026
+File ".../soccerdata/understat.py", line 688, in _read_match
+    home_team_id = next(iter(rosters["h"].values()))["team_id"]
+AttributeError: 'list' object has no attribute 'values'
 ```
 
-League strings (verified in `SUPPORTED_LEAGUES`):
-- `"ITA-Serie A"`
-- `"GER-Bundesliga"`
-- `"FRA-Ligue 1"`
+`rosters["h"]` was expected to be a dict-like; Understat returned a
+list for at least one match in this season. Our loader fetches all
+three Understat endpoints before any DB write, so this one parser
+crash aborted the entire `(GER-Bundesliga, 2024-2025)` ingest before
+section A. **Zero rows present for this pair — nothing to clean up.**
 
-Expected per-season-per-league shape:
-- 306 games for Bundesliga (18 teams × 34 matchdays) — NOT 380.
-  Serie A and Ligue 1 are 20×38 = 380 each.
-- player_match: 10–13k rows each (proportional to game count).
-- team_match: 2 × game count.
-- New players: ~500–600 first season per new league; ~200–300 second.
+Web search at S19 close turned up no specific patched issue for this
+exact AttributeError; soccerdata's general pattern is fragility to
+Understat HTML/JSON changes (see refs).
 
-Watch for:
-- Per-game duplicate quirks like La Liga 29482 — show up as
-  `skipped_as_duplicate > 0` in Section B. Benign unless the
-  group has non-identical rows; the `_probe_dup_player_match.py`
-  pattern is the diagnostic recipe if anything looks off.
-- FK conflicts on `team_match_stats` if a referenced `game_id` somehow
-  isn't in `games` (shouldn't happen — same fetch, same Understat
-  scraper).
+### Notes worth banking
 
-## After Big 3 (build-sequence step 5)
+- **FRA-Ligue 1 2025-26 has 306 games but only 305 team_match rows.**
+  Understat's `read_team_match_stats` returned 305 for this season;
+  probably one postponed or in-progress fixture. Our code is fine
+  — this is an Understat source gap. Captured by `validate_v104_ingest.py`
+  section 5 (invariant check still passes because the join is on the
+  305 games with team_match data; the 306th game appears in `games`
+  but is unjoined).
+- **Some duplicate-row counts were non-zero** in Section B for the
+  Serie A 2025-26 carryover (`inserted=2163, skipped_as_duplicate=9765`).
+  That's expected: the interrupted batch had partially loaded that
+  pair; INSERT OR IGNORE on re-run skipped already-present rows and
+  filled the rest. Idempotency working as designed.
 
-5. Regenerate `docs/db_schema.md` — total rows in player_match_stats
-   should be ~80–100k after all 4 non-PL leagues × 2 seasons each.
+## Active task at S20 start: resolve GER-Bundesliga 2024-25
+
+Path forward (per S19 discussion, deferred deliberately):
+
+1. **Check soccerdata version.** `uv pip show soccerdata`. If we're
+   behind the latest release on PyPI / GitHub, try
+   `uv add soccerdata --upgrade` — a maintainer may have pushed a
+   fix for this specific parser failure. Cheapest move; ~5 min.
+2. **If upgrade doesn't help: per-match workaround.** Iterate the
+   season's match_ids ourselves, call
+   `us.read_player_match_stats(match_id=X)` per game wrapped in
+   try/except, build a partial DataFrame, log which matches failed.
+   ~50 lines of throwaway code. We'd load all games except the bad
+   one(s) and document the gap.
+3. **Open a soccerdata issue** with a minimal repro. (Optional, but
+   the maintainer is responsive per the repo's issue history.)
+4. Re-run `validate_v104_ingest.py` after; should report 10/10
+   `(league, season)` coverage.
+
+## After GER fix (build-sequence step 5)
+
+5. Regenerate `docs/db_schema.md` once GER is in. Total
+   player_match_stats rows should land around ~109k after GER 24-25.
+6. `derived_state_freshness` table + `check_freshness.py` tool
+   (deferred from V1.04 design doc).
 
 ## Deferred
 
-- **Commit S18 work** at session start. Modified at end of S18:
-  - `Claude.md` (gotchas)
+- **Commit S19 work** at session start. Modified at end of S19:
   - `docs/session_state.md` (this file)
-  - `docs/v104_ingest_understat.md` (new)
-  - `src/load/v2_ingest/_position_policy.py` (new)
-  - `src/load/v2_ingest/ingest_understat.py` (new)
-  - Three throwaway probes also created mid-S18, to be deleted before
-    commit: `_probe_understat_league.py`, `_probe_team_match_stats.py`,
-    `_probe_dup_player_match.py`.
+  - `docs/db_schema.md` (carryover from S18; regenerate again after
+    GER fix so it reflects the final coverage)
+  - `src/tools/validate_v104_ingest.py` (new)
+- GER-Bundesliga 2024-25 load (see Active task above).
 - `derived_state_freshness` table + `check_freshness.py` tool.
 - `docs/ingest_architecture.md`.
 - soccerdata column-reference doc + pre-flight checklist
   (carry-forward from S15).
-- Recompute `player_season_stats` for the newly-loaded leagues, so
-  policy-C step 2 starts firing for them. Not blocking; current
-  fallback to `'Sub'` for sub-only players is acceptable per
-  design doc decision (a).
+- Recompute `player_season_stats` for the newly-loaded leagues so
+  policy-C step 2 starts firing for them. Per S18 decision (a) this
+  is not blocking; current 'Sub' fallback is acceptable.
 
 ## Design decisions banked (don't relitigate)
 
@@ -136,7 +135,7 @@ From `docs/v104_ingest_design.md`:
 4. Explicit `derived_state_freshness` tracking, manual refresh control.
 5. Incremental migration via `src/load/v2_ingest/`.
 
-From S17 (`docs/session_state.md` history, `Claude.md`):
+From S17 (`Claude.md`):
 - Mixed-enforcement NOT NULL: DB-level on 5 of 7 league-bearing
   tables; app-code on `games` + `fixtures`.
 - No outer transaction wraps multi-step DuckDB migrations.
@@ -147,5 +146,23 @@ From S18 (`docs/v104_ingest_understat.md`):
   stays untouched.
 - New-league fallback (decision (a)): sub-only players in fresh
   leagues land on `'Sub'`.
-- `players` dimension maintenance lives inside Section B, not as a
+- `players` dimension maintenance lives inside Section B, not a
   separate section.
+
+From S19:
+- Validation script as the standard post-load eyeball, not
+  ad-hoc SQL. Re-run after any league add or repair.
+- 9 / 10 coverage with one known gap is an acceptable shippable
+  state; soccerdata fragility on specific matches is a real and
+  recurring risk worth designing around (per-match try/except
+  pattern documented above for the eventual workaround).
+
+## References
+
+- soccerdata GitHub: https://github.com/probberechts/soccerdata
+- soccerdata issue tracker (filter "understat"):
+  https://github.com/probberechts/soccerdata/issues
+- Related but distinct failure mode (KeyError 'statData'):
+  https://github.com/probberechts/soccerdata/issues/904
+- soccerdata docs (Understat scraper):
+  https://soccerdata.readthedocs.io/en/stable/reference/understat.html
