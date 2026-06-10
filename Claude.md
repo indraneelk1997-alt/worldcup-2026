@@ -69,6 +69,11 @@ These are the hard-won rules. They override default helpfulness.
    unless explicitly told. Append-only is the default posture.
 10. **Update `docs/session_state.md` at the end of a working session**
     so the next session resumes cleanly.
+11. **(S20–S22 trial.)** For the next few sessions, do not push back on
+    tasks for being "too long" or "too big a detour." Surface subtasks
+    and scope-expansion notes, then ask whether to split across
+    sessions or pass in one — let Indraneel make the call. Sunset this
+    rule after S22 unless renewed.
 
 ## Recurring DuckDB gotchas (verified, not inferred)
 
@@ -128,6 +133,35 @@ These are the hard-won rules. They override default helpfulness.
   `(player_id, player_name)` pairs into `players` first. V1.04's
   `ingest_understat.py` does this inside Section B; V1.03 mirrors in
   `backfill_player_match.py` step 10a and `load_md38_actuals.py`.
+- **FRA-Ligue 1 2025-26 source gap (S19, banked S20):** schedule has
+  306 games but `read_team_match_stats` returns only 305 — one game
+  missing from Understat's team-match endpoint (postponed/in-progress).
+  Captured by `validate_v104_ingest.py` section 5; the join still
+  passes its invariant on the 305 with data. Benign source gap, not
+  our bug.
+
+## soccerdata extension (S20)
+
+- **Default `available_leagues()` is a curated subset, not the source's
+  full capability.** Off-the-shelf FBref/WhoScored only expose Euro +
+  WC + Women's WC for internationals; ESPN only Big-5 domestic.
+- **Custom league overlay:** soccerdata reads
+  `~/soccerdata/config/league_dict.json` at import and merges it on top
+  of `_config.py:LEAGUE_DICT`. Custom entries unlock arbitrary FBref
+  competitions. Entry shape mirrors the default — canonical key (e.g.,
+  `"UEFA-Champions League"`) → per-scraper internal name + optional
+  `season_start` / `season_end` (or `"season_code": "single-year"` for
+  tournaments).
+- **FBref lookup is exact-match on `competition_name`.** Wrong string
+  → silent empty df → `pd.concat([])` ValueError (in `read_seasons`),
+  no friendly "league not found" error. Always verify the FBref string
+  against the on-page `competition_name` column at fbref.com/en/comps/.
+- **Em-dash gotcha in WCQ names:** FBref's WC qualifying competition
+  names use the em-dash character `—` (U+2014), not a hyphen — e.g.,
+  `"FIFA World Cup Qualification — UEFA"`. Wrong byte → empty df.
+- **FBref rate limit:** 7s between requests (`fbref.py:97`). One season
+  of per-match player stats ≈ 22 min wall for a CL-sized competition.
+  Cached locally after first fetch.
 
 ## External references
 
