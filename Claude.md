@@ -160,8 +160,60 @@ These are the hard-won rules. They override default helpfulness.
   names use the em-dash character `—` (U+2014), not a hyphen — e.g.,
   `"FIFA World Cup Qualification — UEFA"`. Wrong byte → empty df.
 - **FBref rate limit:** 7s between requests (`fbref.py:97`). One season
-  of per-match player stats ≈ 22 min wall for a CL-sized competition.
+  of per-match player stats ≈ **22 min wall as estimate, ~70 min wall
+  observed for UCL 2024-25** (S21 Phase 2c). Plan capacity accordingly.
   Cached locally after first fetch.
+- **In-repo overlay + setup script (S21):** canonical league_dict.json
+  lives at `data/config/league_dict.json`; `src/tools/setup_soccerdata_overlay.py`
+  merges it into `~/soccerdata/config/` (in-repo wins on conflict, `.bak`
+  backup, idempotent). Re-run after any clone or overlay change.
+
+## FBref / Opta data termination (Jan 20, 2026) — S21 finding
+
+- Sports Reference (FBref's parent) lost their data partnership with
+  Opta/StatsPerform. **All advanced statistics removed from FBref
+  output industry-wide**: `xG`, `npxG`, `xAG`, progressive passes,
+  shot-creating actions, goal-creating actions, expected-goals-against.
+- This affects every competition FBref serves, not just UCL/EL.
+- soccerdata is NOT the issue — `_parse_table` (`fbref.py:1037–1064`)
+  just runs `pd.read_html` with no column filtering. If a column is
+  missing from the dataframe, FBref didn't serve it.
+- Our **existing Understat-based data is unaffected** (Understat runs
+  its own xG model, independent of Opta).
+- xG sourcing implication for our project:
+  - Top-5 domestic: Understat (already loaded). ✅ xG.
+  - Major international tournaments (WC 2022, Euro 2024, Copa 2024,
+    AFCON 2023): StatsBomb Open Data — event-level + 360 spatial,
+    deferred S23+ track.
+  - Everything else FBref-served (UCL, EL, Conference, AFCON 2025,
+    Asian Cup, Gold Cup, Nations League, WCQ ×6, friendlies): **no xG
+    available on free path.** Modeling will rely on shape + counting
+    stats (goals, lineups, formations, cards, round, venue).
+- References:
+  https://www.theixsports.com/the-ix-soccer/fbrefs-loss-advanced-stats-womens-soccer-data-accessibility/
+  https://ricardoheredia.substack.com/p/farewell-fbref-advanced-stats-when
+
+## soccerdata FBref behaviour (S21 probe findings, post-termination)
+
+- **`read_team_match_stats` is all-comps contaminated.** soccerdata
+  hardcodes `/matchlogs/all_comps/<stat_type>/` URLs
+  (`fbref.py:415, 432`). Configuring `leagues=['UEFA-Champions League']`
+  does NOT scope the fetch — it returns each team's matches across
+  every competition (UCL config returned 1,121 rows including EFL Cup).
+  `league` index comes back `<NA>`. Loader must filter post-hoc by
+  `match_report` URL substring + cross-check `round` enum, then assign
+  `league` explicitly.
+- **`read_player_match_stats` is clean per match.** One match = one
+  competition. league/season/game inherited from `read_schedule()`
+  per `fbref.py:781–783`. UCL 2024-25 `stat_type='summary'` returned
+  5,826 rows, 189 games, 878 distinct players — properly tagged.
+- **`read_player_match_stats` exposes only 2 stat_types** (`summary`,
+  `keepers`) of the 6 FBref serves in HTML. The other 4 (`passing`,
+  `defense`, `possession`, `misc`) are unreachable via soccerdata.
+  Recoverable in principle via custom parsing of cached
+  `~/soccerdata/data/FBref/match_<game_id>.html` files (no extra HTTP),
+  but post-termination it's unclear which of those tables still carry
+  useful content beyond Performance counting stats.
 
 ## External references
 
