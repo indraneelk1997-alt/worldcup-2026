@@ -161,7 +161,8 @@ def main() -> None:
 
         # 8) Grand totals
         section("8) Grand totals (all tables touched by V1.04 ingest)")
-        for t in LEAGUE_TABLES + ["players"]:
+        for t in LEAGUE_TABLES + ["players",
+                                  "team_match_fbref", "player_match_fbref"]:
             total = con.execute(f"SELECT count(*) FROM {t}").fetchone()[0]
             print(f"    {t:<30} {total:>10,}")
 
@@ -179,6 +180,83 @@ def main() -> None:
         ).fetchone()[0]
         print(f"    {n_multi} player_ids appear in 2+ leagues "
               f"(cross-league transfers / shared player_ids)")
+
+        # 10) FBref source-separated tables (Option C, S22). These live
+        # in their own tables, so the Understat-table sections above
+        # (inner joins) silently skip FBref leagues — validated here.
+        section("10) FBref tables (Option C) — team_match_fbref / player_match_fbref")
+
+        print("\n  --- games by source ---")
+        for src, n in con.execute(
+            "SELECT COALESCE(source, '<NULL>') AS s, count(*) FROM games "
+            "GROUP BY s ORDER BY s"
+        ).fetchall():
+            print(f"    {src:<12} {n:>6,}")
+
+        for t in ("team_match_fbref", "player_match_fbref"):
+            print(f"\n  --- {t}: rows per (league, season) ---")
+            rows = con.execute(
+                f"SELECT league, season, count(*) FROM {t} "
+                f"GROUP BY league, season ORDER BY league, season"
+            ).fetchall()
+            if not rows:
+                print("    (empty)")
+            for league, season, n in rows:
+                print(f"    {league:<24} {season:<11} {n:>8,}")
+
+        print("\n  --- invariant: team_match_fbref == 2 × FBref games ---")
+        for league, season, ng, nt, exp in con.execute(
+            """SELECT g.league, g.season, COUNT(DISTINCT g.game_id),
+                      COUNT(*), 2 * COUNT(DISTINCT g.game_id)
+               FROM games g JOIN team_match_fbref t USING (game_id)
+               WHERE g.source = 'fbref'
+               GROUP BY g.league, g.season ORDER BY g.league, g.season"""
+        ).fetchall():
+            ok = "OK" if nt == exp else "!! MISMATCH"
+            print(f"    {league:<24} {season:<11} games={ng:>4} "
+                  f"team_match={nt:>5} expected={exp:>5}  {ok}")
+
+        print("\n  --- distinct players (player_match_fbref) ---")
+        for league, season, n in con.execute(
+            "SELECT league, season, COUNT(DISTINCT player_id) "
+            "FROM player_match_fbref GROUP BY league, season "
+            "ORDER BY league, season"
+        ).fetchall():
+            print(f"    {league:<24} {season:<11} {n:>5} distinct players")
+
+        print("\n  --- score cross-check: games goals == team_match_fbref goals "
+              "(decision c) ---")
+        mismatch = con.execute(
+            """SELECT count(*) FROM games g
+               JOIN team_match_fbref th ON th.game_id = g.game_id AND th.side = 'home'
+               JOIN team_match_fbref ta ON ta.game_id = g.game_id AND ta.side = 'away'
+               WHERE g.source = 'fbref'
+                 AND (th.goals != g.home_goals OR ta.goals != g.away_goals)"""
+        ).fetchone()[0]
+        print(f"    games with score/team_match goal mismatch: {mismatch}"
+              f"{'  !! REVIEW' if mismatch else '  OK'}")
+
+        print("\n  --- FK integrity (FBref tables; expect 0 orphans) ---")
+        for desc, q in [
+            ("player_match_fbref.game_id not in games",
+             "SELECT count(*) FROM player_match_fbref p "
+             "LEFT JOIN games g USING (game_id) WHERE g.game_id IS NULL"),
+            ("player_match_fbref.player_id not in players",
+             "SELECT count(*) FROM player_match_fbref p "
+             "LEFT JOIN players pl USING (player_id) WHERE pl.player_id IS NULL"),
+            ("team_match_fbref.game_id not in games",
+             "SELECT count(*) FROM team_match_fbref t "
+             "LEFT JOIN games g USING (game_id) WHERE g.game_id IS NULL"),
+        ]:
+            n = con.execute(q).fetchone()[0]
+            print(f"    {desc}: {n}{'  !! REVIEW' if n else '  OK'}")
+
+        print("\n  --- dob coverage (FBref players, id >= 50M) ---")
+        with_dob, total_fb = con.execute(
+            "SELECT count(player_dob), count(*) FROM players "
+            "WHERE player_id >= 50000000"
+        ).fetchone()
+        print(f"    FBref players: {total_fb} | with dob: {with_dob}")
 
     finally:
         con.close()

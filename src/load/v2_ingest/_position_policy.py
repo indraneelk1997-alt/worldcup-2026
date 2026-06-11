@@ -135,3 +135,36 @@ def compute_effective_position(df, season_stats_class_lookup):
     print(f"    of which kept as 'Sub' (no class either): "
           f"{fallback_to_sub_count}")
     return eff_lookup
+
+
+# ---------------------------------------------------------------------
+# FBref source-aware policy (S22, decision d).
+#
+# The Understat policy above is preserved byte-for-byte. FBref match
+# `pos` (observed S22) is a MIX:
+#   * granular codes already in our `positions` vocab: CB, LB, DM, ...
+#   * coarse codes DF/MF/FW (added to `positions` by the S22 migration)
+#   * multi-position values: 'DF,MF', 'DF,FW', 'FW,MF'
+#   * 'AM' — FBref's spelling of our existing 'CAM'
+# Policy: primary token (before the first comma) wins; alias maps
+# spelling differences onto our vocabulary. No 'Sub' concept here —
+# FBref gives the position played per match directly.
+# ---------------------------------------------------------------------
+
+FBREF_POS_ALIAS = {"AM": "CAM"}
+
+_FBREF_POS_EMPTY = {"", "nan", "<na>", "none"}
+
+
+def fbref_effective_position(raw_pos):
+    """Resolve an FBref match `pos` value to a single `position_code`
+    in our vocabulary. Returns None for missing/blank pos. Does NOT
+    touch the Understat `compute_effective_position` policy above.
+    """
+    if raw_pos is None:
+        return None
+    s = str(raw_pos).strip()
+    if s.lower() in _FBREF_POS_EMPTY:
+        return None
+    primary = s.split(",")[0].strip()
+    return FBREF_POS_ALIAS.get(primary, primary)

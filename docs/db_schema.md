@@ -1,8 +1,8 @@
 # DuckDB schema reference
 
-_Generated: 2026-06-05T09:35:06_  
+_Generated: 2026-06-11T09:33:59_  
 _DB: `data/processed/worldcup.duckdb`_  
-_Tables: 24_  
+_Tables: 26_  
 
 
 This file is auto-generated. Do not edit by hand. Regenerate with:
@@ -172,7 +172,7 @@ uv run python src/tools/dump_db_schema.py
 
 ### `games`
 
-**Rows**: 3,198
+**Rows**: 3,387
 
 | Column | Type | Nullable | PK |
 |---|---|---|---|
@@ -182,6 +182,14 @@ uv run python src/tools/dump_db_schema.py
 | `home_team` | `VARCHAR` | NO |  |
 | `away_team` | `VARCHAR` | NO |  |
 | `league` | `VARCHAR` | YES |  |
+| `source` | `VARCHAR` | YES |  |
+| `source_game_id` | `VARCHAR` | YES |  |
+| `stage` | `VARCHAR` | YES |  |
+| `venue` | `VARCHAR` | YES |  |
+| `home_goals` | `INTEGER` | YES |  |
+| `away_goals` | `INTEGER` | YES |  |
+| `home_pens` | `INTEGER` | YES |  |
+| `away_pens` | `INTEGER` | YES |  |
 
 **Declared foreign keys**: none
 
@@ -194,6 +202,14 @@ uv run python src/tools/dump_db_schema.py
   home_team = 'Manchester United'
   away_team = 'Fulham'
   league = 'ENG-Premier League'
+  source = 'understat'
+  source_game_id = None
+  stage = None
+  venue = None
+  home_goals = None
+  away_goals = None
+  home_pens = None
+  away_pens = None
 ```
 
 ### `league_averages_v103`
@@ -397,6 +413,79 @@ uv run python src/tools/dump_db_schema.py
   notes = 'MLE on B1.2 xG inputs, 2024-25 + 2025-26 played matches. Path Z: post-proces...
 ```
 
+### `player_match_fbref`
+
+**Rows**: 5,826
+
+| Column | Type | Nullable | PK |
+|---|---|---|---|
+| `game_id` | `INTEGER` | NO | ✓ |
+| `player_id` | `INTEGER` | NO | ✓ |
+| `season` | `VARCHAR` | NO |  |
+| `team` | `VARCHAR` | NO |  |
+| `league` | `VARCHAR` | NO |  |
+| `position` | `VARCHAR` | YES |  |
+| `effective_position` | `VARCHAR` | YES |  |
+| `position_id` | `INTEGER` | YES |  |
+| `jersey_number` | `INTEGER` | YES |  |
+| `nation` | `VARCHAR` | YES |  |
+| `minutes` | `INTEGER` | YES |  |
+| `goals` | `INTEGER` | YES |  |
+| `assists` | `INTEGER` | YES |  |
+| `pens_made` | `INTEGER` | YES |  |
+| `pens_att` | `INTEGER` | YES |  |
+| `shots` | `INTEGER` | YES |  |
+| `shots_on_target` | `INTEGER` | YES |  |
+| `yellow_cards` | `INTEGER` | YES |  |
+| `red_cards` | `INTEGER` | YES |  |
+| `fouls` | `INTEGER` | YES |  |
+| `fouled` | `INTEGER` | YES |  |
+| `offsides` | `INTEGER` | YES |  |
+| `crosses` | `INTEGER` | YES |  |
+| `tackles_won` | `INTEGER` | YES |  |
+| `interceptions` | `INTEGER` | YES |  |
+| `own_goals` | `INTEGER` | YES |  |
+| `pens_won` | `INTEGER` | YES |  |
+| `pens_conceded` | `INTEGER` | YES |  |
+
+**Declared foreign keys** (per `duckdb_constraints()`):
+
+- (`game_id`) → `games` (`game_id`)
+- (`player_id`) → `players` (`player_id`)
+
+**Sample row**:
+
+```
+  game_id = 10000000
+  player_id = 50000023
+  season = '2024-2025'
+  team = 'Bayern Munich'
+  league = 'UEFA-Champions League'
+  position = 'DM'
+  effective_position = 'DM'
+  position_id = None
+  jersey_number = 45
+  nation = 'GER'
+  minutes = 90
+  goals = 0
+  assists = 0
+  pens_made = 0
+  pens_att = 0
+  shots = 0
+  shots_on_target = 0
+  yellow_cards = 0
+  red_cards = 0
+  fouls = 2
+  fouled = 1
+  offsides = 0
+  crosses = 0
+  tackles_won = 0
+  interceptions = 0
+  own_goals = 0
+  pens_won = None
+  pens_conceded = None
+```
+
 ### `player_match_stats`
 
 **Rows**: 99,079
@@ -577,12 +666,13 @@ uv run python src/tools/dump_db_schema.py
 
 ### `players`
 
-**Rows**: 3,465
+**Rows**: 4,343
 
 | Column | Type | Nullable | PK |
 |---|---|---|---|
 | `player_id` | `INTEGER` | NO | ✓ |
 | `player_name` | `VARCHAR` | NO |  |
+| `player_dob` | `DATE` | YES |  |
 
 **Declared foreign keys**: none
 
@@ -591,11 +681,12 @@ uv run python src/tools/dump_db_schema.py
 ```
   player_id = 447
   player_name = 'Kevin De Bruyne'
+  player_dob = None
 ```
 
 ### `positions`
 
-**Rows**: 20
+**Rows**: 23
 
 | Column | Type | Nullable | PK |
 |---|---|---|---|
@@ -690,6 +781,52 @@ uv run python src/tools/dump_db_schema.py
   side = 'home'
   team = 'Arsenal'
   formation = None
+```
+
+### `team_match_fbref`
+
+**Rows**: 378
+
+| Column | Type | Nullable | PK |
+|---|---|---|---|
+| `game_id` | `INTEGER` | NO | ✓ |
+| `team` | `VARCHAR` | NO | ✓ |
+| `side` | `VARCHAR` | YES |  |
+| `season` | `VARCHAR` | NO |  |
+| `opponent` | `VARCHAR` | YES |  |
+| `league` | `VARCHAR` | NO |  |
+| `goals` | `INTEGER` | YES |  |
+| `opponent_goals` | `INTEGER` | YES |  |
+| `result` | `VARCHAR` | YES |  |
+| `possession` | `DOUBLE` | YES |  |
+| `attendance` | `INTEGER` | YES |  |
+| `captain` | `VARCHAR` | YES |  |
+| `formation` | `VARCHAR` | YES |  |
+| `opp_formation` | `VARCHAR` | YES |  |
+| `referee` | `VARCHAR` | YES |  |
+
+**Declared foreign keys** (per `duckdb_constraints()`):
+
+- (`game_id`) → `games` (`game_id`)
+
+**Sample row**:
+
+```
+  game_id = 10000012
+  team = 'Arsenal'
+  side = 'away'
+  season = '2024-2025'
+  opponent = 'Atalanta'
+  league = 'UEFA-Champions League'
+  goals = 0
+  opponent_goals = 0
+  result = 'D'
+  possession = 46.0
+  attendance = 22858
+  captain = 'Gabriel Jesus'
+  formation = '4-3-3'
+  opp_formation = '3-4-3'
+  referee = 'Clément Turpin'
 ```
 
 ### `team_match_predictions_b12`
@@ -816,51 +953,67 @@ uv run python src/tools/dump_db_schema.py
 
 > These column names appear in 2+ tables. Some are real FK relationships (declared or NOT — `duckdb_constraints()` is known to miss some, see S14 carry-forward). Some are dimensional values that happen to share names (e.g. `season`, `model_version`). Inspect manually.
 
-### `season` (11 tables)
+### `season` (13 tables)
 
 - `best_xi` *(PK)*
 - `fixtures`
 - `games`
 - `league_averages_v103` *(PK)*
+- `player_match_fbref`
 - `player_match_stats`
 - `player_positions` *(PK)*
 - `player_positions_v103` *(PK)*
 - `player_season_stats` *(PK)*
+- `team_match_fbref`
 - `team_match_predictions_b12`
 - `team_match_stats`
 - `team_season_strength_v103` *(PK)*
 
-### `team` (9 tables)
+### `team` (11 tables)
 
 - `best_xi` *(PK)*
+- `player_match_fbref`
 - `player_match_stats`
 - `player_positions` *(PK)*
 - `player_positions_v103` *(PK)*
 - `player_season_stats` *(PK)*
 - `scenario_teams`
+- `team_match_fbref` *(PK)*
 - `team_match_predictions_b12` *(PK)*
 - `team_match_stats` *(PK)*
 - `team_season_strength_v103` *(PK)*
 
-### `league` (7 tables)
+### `league` (9 tables)
 
 - `fixtures`
 - `games`
 - `league_averages_v103`
+- `player_match_fbref`
 - `player_match_stats`
 - `player_season_stats`
+- `team_match_fbref`
 - `team_match_stats`
 - `team_season_strength_v103`
 
-### `player_id` (7 tables)
+### `player_id` (8 tables)
 
 - `best_xi`
 - `fixture_lineups`
+- `player_match_fbref` *(PK)*
 - `player_match_stats` *(PK)*
 - `player_positions` *(PK)*
 - `player_positions_v103` *(PK)*
 - `player_season_stats` *(PK)*
 - `players` *(PK)*
+
+### `game_id` (6 tables)
+
+- `games` *(PK)*
+- `player_match_fbref` *(PK)*
+- `player_match_stats` *(PK)*
+- `team_match_fbref` *(PK)*
+- `team_match_predictions_b12` *(PK)*
+- `team_match_stats` *(PK)*
 
 ### `model_version` (6 tables)
 
@@ -879,6 +1032,22 @@ uv run python src/tools/dump_db_schema.py
 - `md38_predictions_b12` *(PK)*
 - `md38_score_grid_b12` *(PK)*
 
+### `formation` (5 tables)
+
+- `best_xi` *(PK)*
+- `formation_slots` *(PK)*
+- `formations` *(PK)*
+- `scenario_teams`
+- `team_match_fbref`
+
+### `goals` (5 tables)
+
+- `player_match_fbref`
+- `player_match_stats`
+- `player_season_stats`
+- `team_match_fbref`
+- `team_match_stats`
+
 ### `position_class` (5 tables)
 
 - `best_xi`
@@ -887,6 +1056,14 @@ uv run python src/tools/dump_db_schema.py
 - `player_season_stats`
 - `positions`
 
+### `side` (5 tables)
+
+- `fixture_lineups` *(PK)*
+- `scenario_teams` *(PK)*
+- `team_match_fbref`
+- `team_match_predictions_b12`
+- `team_match_stats`
+
 ### `created_at` (4 tables)
 
 - `league_averages_v103`
@@ -894,19 +1071,12 @@ uv run python src/tools/dump_db_schema.py
 - `team_match_predictions_b12`
 - `team_season_strength_v103`
 
-### `formation` (4 tables)
+### `minutes` (4 tables)
 
-- `best_xi` *(PK)*
-- `formation_slots` *(PK)*
-- `formations` *(PK)*
-- `scenario_teams`
-
-### `game_id` (4 tables)
-
-- `games` *(PK)*
-- `player_match_stats` *(PK)*
-- `team_match_predictions_b12` *(PK)*
-- `team_match_stats` *(PK)*
+- `best_xi`
+- `player_match_fbref`
+- `player_match_stats`
+- `player_season_stats`
 
 ### `scenario_id` (4 tables)
 
@@ -915,12 +1085,11 @@ uv run python src/tools/dump_db_schema.py
 - `predictions`
 - `scenario_teams` *(PK)*
 
-### `side` (4 tables)
+### `assists` (3 tables)
 
-- `fixture_lineups` *(PK)*
-- `scenario_teams` *(PK)*
-- `team_match_predictions_b12`
-- `team_match_stats`
+- `player_match_fbref`
+- `player_match_stats`
+- `player_season_stats`
 
 ### `away_team` (3 tables)
 
@@ -928,23 +1097,17 @@ uv run python src/tools/dump_db_schema.py
 - `games`
 - `md38_predictions_b12`
 
-### `goals` (3 tables)
-
-- `player_match_stats`
-- `player_season_stats`
-- `team_match_stats`
-
 ### `home_team` (3 tables)
 
 - `fixtures`
 - `games`
 - `md38_predictions_b12`
 
-### `minutes` (3 tables)
+### `opponent` (3 tables)
 
-- `best_xi`
-- `player_match_stats`
-- `player_season_stats`
+- `team_match_fbref`
+- `team_match_predictions_b12`
+- `team_match_stats`
 
 ### `p_away_win` (3 tables)
 
@@ -964,6 +1127,12 @@ uv run python src/tools/dump_db_schema.py
 - `md38_predictions_b12`
 - `predictions`
 
+### `position` (3 tables)
+
+- `player_match_fbref`
+- `player_match_stats`
+- `player_season_stats`
+
 ### `position_code` (3 tables)
 
 - `formation_slots`
@@ -976,10 +1145,20 @@ uv run python src/tools/dump_db_schema.py
 - `fixture_lineups` *(PK)*
 - `formation_slots` *(PK)*
 
-### `assists` (2 tables)
+### `away_goals` (2 tables)
 
+- `games`
+- `md38_score_grid_b12` *(PK)*
+
+### `effective_position` (2 tables)
+
+- `player_match_fbref`
 - `player_match_stats`
-- `player_season_stats`
+
+### `home_goals` (2 tables)
+
+- `games`
+- `md38_score_grid_b12` *(PK)*
 
 ### `match_date` (2 tables)
 
@@ -996,20 +1175,35 @@ uv run python src/tools/dump_db_schema.py
 - `player_season_stats`
 - `team_match_stats`
 
-### `opponent` (2 tables)
+### `opponent_goals` (2 tables)
 
-- `team_match_predictions_b12`
+- `team_match_fbref`
 - `team_match_stats`
 
-### `position` (2 tables)
+### `own_goals` (2 tables)
 
+- `player_match_fbref`
 - `player_match_stats`
-- `player_season_stats`
+
+### `position_id` (2 tables)
+
+- `player_match_fbref`
+- `player_match_stats`
 
 ### `priority` (2 tables)
 
 - `player_positions`
 - `player_positions_v103`
+
+### `red_cards` (2 tables)
+
+- `player_match_fbref`
+- `player_match_stats`
+
+### `shots` (2 tables)
+
+- `player_match_fbref`
+- `player_match_stats`
 
 ### `xa` (2 tables)
 
@@ -1030,3 +1224,8 @@ uv run python src/tools/dump_db_schema.py
 
 - `md38_predictions_b12`
 - `predictions`
+
+### `yellow_cards` (2 tables)
+
+- `player_match_fbref`
+- `player_match_stats`

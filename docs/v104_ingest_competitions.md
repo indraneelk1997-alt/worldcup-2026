@@ -184,34 +184,140 @@ post-termination whether their tables still carry useful content
 beyond what's in `summary`. Not probed; defer to S22+ if modeling
 needs anything beyond the Performance counting stats.
 
-## Schema deltas (FBref vs Understat) — to resolve in S22 step 3
+## Schema deltas (FBref vs Understat) — RESOLVED S22 step 3
 
-- **`game_id`**: FBref returns hash strings (e.g., `'7c5c2955'`), not
-  Understat's integer. Our `games.game_id` is currently INTEGER →
-  schema migration likely needed (INTEGER → VARCHAR). Per S17 rules:
-  ALTER blocked on FK-referenced tables; may need table-recreate.
-- **`score`**: FBref returns text (`'9–2'` with en-dash). Loader must
-  parse into `home_goals` / `away_goals`.
-- **`round`**: NEW signal — knockout/league-phase label directly in
-  the data. Worth adding as a `round` column on `games`.
-- **`venue`**: stadium name. Combined with `round`, gives automatic
-  neutral-venue detection for finals.
-- **`Formation` / `Opp Formation` / `Captain`**: bonus columns from
-  team_match. Worth capturing.
-- **Multi-position `pos`**: FBref returns `'DF,MF'` etc. (vs
-  Understat's single value). The S18 `effective_position` policy needs
-  adapting.
-- **`age` as `'30-246'` text** (years-days). Loader parsing needed.
-- **MultiIndex columns** from FBref endpoints. Loader flattens.
-- **Cross-source `player_id`**: FBref player IDs ≠ Understat player
-  IDs. Recommend **defer entirely** (option c) — load FBref data clean
-  with FBref-native IDs, build a crosswalk only when actually needed
-  for cross-source aggregation. Same physical Mbappé in PL (Understat)
-  + UCL (FBref) → two `players` rows; downstream join on
-  `(name, dob, nationality)` when required.
-- **`team_match_stats` shape**: FBref returns one row per team per
-  match natively (after our all-comps filter). The S18 per-game
-  home/away unpivot trick is NOT needed for FBref.
+All eight deltas were decided in the S22 design conversation. The
+governing architecture is **Option C: source-separated FBref fact
+tables** (decision h) — FBref per-match data lands in NEW dedicated
+tables, the Understat fact tables are left untouched, and the three
+shared dimensions (`games`, `players`, `positions`) take additive
+changes only. Full migration plan + DDL sketch in
+[`docs/v104_schema_migration.md`](v104_schema_migration.md). Summary
+below; the migration doc is canonical for the "how."
+
+### Governing split (decision h — Option C)
+
+- **Shared dimensions, both sources write:** `games`, `players`,
+  `positions`. Additive changes only — no NOT NULL relaxation, no
+  table recreate. Honors append-only (Claude.md rule 9).
+- **Source-separated facts, FBref-only:** new `team_match_fbref` and
+  `player_match_fbref`. Hold everything FBref serves (counting stats +
+  bonus columns); **no xG** (gone industry-wide Jan 2026).
+- **Understat fact tables untouched:** `team_match_stats` /
+  `player_match_stats` keep their xG-dense, NOT NULL shape. The
+  decision was explicitly *against* welding FBref's shape-only rows
+  into an xG table (would force relaxing ~7 NOT NULL metric columns and
+  leave them permanently NULL for every FBref row).
+- **Cross-source reads:** union VIEW(s) over the shared spine
+  (`game_id, team, side, goals, league, season`). Keeps each source's
+  table dense and semantically honest about what it does/doesn't carry.
+
+Rationale: the "no xG for FBref comps" gap is *structural*, and matches
+the modelling reality already accepted at S21 — xG-comps and shape-only
+comps are different model inputs anyway, so they're naturally different
+tables.
+
+### Decision-by-decision
+
+- **(a) `game_id` INTEGER → surrogate, NOT VARCHAR.** Pushed back on
+  the original "INTEGER → VARCHAR migration" assumption. VARCHAR-native
+  would require a full drop/recreate of `games` + every FK-referenced
+  fact table (incl. the 99k-row `player_match_stats`), because DuckDB
+  blocks `ALTER` on FK-referenced tables and has no `DROP/ADD
+  CONSTRAINT` (Claude.md / S17) — high risk, and it needs the *exact*
+  FK graph, which `duckdb_constraints()` under-reports. Instead:
+  `game_id` stays INTEGER; FBref games get **surrogate integers** in a
+  dedicated range (≥ 10_000_000) and carry their native FBref hash in
+  two new plain-nullable columns `source` + `source_game_id`, with
+  `(source, source_game_id)` as the app-enforced natural-key
+  uniqueness. Migration = two `ADD COLUMN` + backfill `source =
+  'understat'` for existing rows. Zero recreate, FKs untouched.
+- **(b) `stage` + `venue` on `games`.** Both `VARCHAR NULL`. Named
+  `stage` (not `round`) to avoid colliding with DuckDB's `ROUND()`
+  builtin (bare `round` needs quoting forever). Nullability is *forced*
+  — `games` is FK-referenced so `SET NOT NULL` is blocked regardless;
+  presence-for-FBref-rows is app-enforced in the loader. No
+  enum/CHECK (DuckDB ALTER can't add CHECK; round labels vary per
+  comp) — the validator checks the observed `stage` label set instead.
+  `stage='Final'` + known-neutral `venue` → automatic neutral-site
+  detection later.
+- **(c) Score text → structured, loader-side.** Parse at the ingest
+  boundary (dirty source-specific text), not a derived view. Add
+  `home_goals`, `away_goals`, `home_pens`, `away_pens` (INT NULL) to
+  `games`. Parser splits on the dash family (FBref uses en-dash U+2013,
+  per Claude.md en-dash warnings — split on `[–—-]` defensively), takes
+  the leading integer each side, captures a trailing `(n)` per side as
+  pens (`'1 (4)'` → goals=1, pens=4). `home_pens IS NOT NULL` *is* the
+  went-to-penalties flag. Validator cross-checks `games` goals vs
+  `team_match_fbref` goals (different endpoints, must agree; fail loud).
+  **Observe-don't-infer gate:** confirm FBref's real shootout/aet score
+  string against the S21 cache before writing the regex — `'1 (4)'` is
+  from the design doc, not yet observed.
+  Backfilling the 3,198 existing Understat `games` rows from
+  `team_match_stats` is **deferred** to a single post-gather one-shot.
+- **(d) Multi-position `pos` → source-aware policy + coarse codes.**
+  FBref `pos` is class-level (`{GK, DF, MF, FW}`), coarser than
+  Understat's granular codes — `'DF,MF'` maps to `position_class`, not
+  `position_code`. Logic stays in `_position_policy.py` (its single
+  job), extended source-aware; the existing Understat policy + granular
+  vocabulary are preserved untouched. Add honest coarse codes
+  `DF`/`MF`/`FW` to `positions` (classes DEF/MID/FWD, `flank='C'`; `GK`
+  already exists, reused) — rather than fabricating a granular code
+  like `CB`. Primary token wins (`'DF,MF'` → `effective_position='DF'`,
+  `position_id` → the `DF` row); full raw string kept in `position`.
+  These columns live on the new `player_match_fbref` table.
+- **(e) `age` `'30-246'` → DOB on `players`.** The years-days format is
+  exact, so `DOB = match_date − Ny − Md` (via `dateutil.relativedelta`,
+  leap-years handled) gives a precise, stable birth date. Add
+  `player_dob DATE NULL` to `players` (thin dimension, only id+name
+  today). Per-match age is derived on demand — not stored, no 99k-row
+  bloat. Understat rows keep `dob=NULL`. **Free validation:** DOB
+  computed from several of a player's matches must agree; disagreement
+  = parser bug.
+- **(f) MultiIndex flatten = mechanical flatten + curated map.** Two
+  layers. (1) `_flatten_fbref_columns()` helper: join non-empty levels
+  with `_`, collapse blank/`Unnamed: N_level_0` top levels to the leaf,
+  lowercase → `('Performance','Gls')` → `performance_gls`,
+  `('Unnamed…','Min')` → `min`. Group-prefixed = collision-safe. (2)
+  curated `FBREF_COL_MAP` dict (flattened FBref name → canonical
+  snake_case schema column, e.g. `performance_gls→goals`,
+  `min→minutes`) as an **anti-corruption layer** — the single source of
+  truth, auditable, source-agnostic. **Fail loud on any unmapped
+  column** (our early-warning for FBref drift; they already gutted the
+  Expected group in Jan 2026). **Observe-don't-infer gate:** build the
+  map from the cached probe column dump, not memory.
+- **(g) All-comps `team_match` filter — inverted hierarchy.** Pushed
+  back on URL-substring-as-primary (false-positive prone: substring
+  `'Champions-League'` also matches `'Champions-League-Qualifying'`;
+  round enum needs per-comp hand-maintenance). **Primary** = exact
+  `game_id` set-membership against the clean `read_schedule` output
+  (the authoritative "which games are this comp this season" set) —
+  inner join on the real key, no substring fragility, lands exactly on
+  the expected 378 = 189×2 (validator's `team_match == 2×games`
+  invariant catches it free). **Secondary (defensive tripwire)** =
+  exact competition-slug + `round ∈ enum`; assert agreement with
+  primary, fail loud on disagreement (FBref-drift alarm). **Observe
+  gate:** confirm soccerdata surfaces `game_id` on `team_match` rows,
+  else parse the 8-char hash from `match_report`.
+- **(h) Bonus columns → source-separated tables (Option C).** See
+  governing split above. `Formation`, `Opp Formation`, `Captain`,
+  `jersey_number`, etc. land in `team_match_fbref` /
+  `player_match_fbref` alongside the FBref core — not as sidecars
+  bolted onto, nor as nullable columns sprinkled across, the Understat
+  tables.
+
+### Carried forward unchanged
+
+- **Cross-source `player_id`**: still **defer entirely** (option c).
+  FBref player IDs ≠ Understat IDs; load FBref clean with FBref-native
+  IDs into `player_match_fbref`. Same physical Mbappé in PL (Understat)
+  + UCL (FBref) → two `players` rows; crosswalk on
+  `(name, dob, nationality)` only when cross-source aggregation
+  actually needs it. (Decision e now gives us `dob` on both rows — a
+  ready join key when that day comes.)
+- **`team_match` shape**: FBref returns one row per team per match
+  natively (after the all-comps filter), so the S18 per-game home/away
+  unpivot trick is NOT needed.
 
 ## League naming convention
 

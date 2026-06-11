@@ -3,9 +3,10 @@
 > **Fast-changing.** This is "where we are right now." Updated at the end
 > of each working session. For permanent facts/rules, see `Claude.md`.
 
-**Last updated:** end of S21 (2026-06-10, late evening)
-**Current version line:** V1.04 ingest — Understat 9/10 + FBref overlay
-mechanism proven for UCL, schema/loader work pending S22
+**Last updated:** end of S22 (2026-06-11)
+**Current version line:** V1.04 ingest — Understat 9/10 + **UCL 2024-25
+LIVE-LOADED via FBref (Option C), validated clean**. UCL 2025-26 pending
+(needs a live ~70-min fetch — not cached).
 
 ## Latest repo state (verify with `git log` / `git status` at session start)
 
@@ -133,25 +134,100 @@ lineups + formations + round + venue. Documented gap, not a bug.
   per-match player stats. Capacity-planning fact.
 - In-repo overlay + setup-script pattern.
 
-## Active task at S22 start: continue UCL loader (Path A, no xG)
+## S22 outcome — schema delta design LOCKED (step 3 complete)
 
-S21 left us at step 2 done. S22 picks up at step 3:
+Design-only session, no code, no live DB writes. All eight schema
+deltas decided one-at-a-time; deliverables written:
+`docs/v104_ingest_competitions.md` "Schema deltas — RESOLVED S22 step
+3" + new `docs/v104_schema_migration.md` (migration plan + DDL sketch).
 
+**Governing architecture: Option C — source-separated FBref fact
+tables.** FBref per-match data → new `team_match_fbref` /
+`player_match_fbref`; Understat fact tables untouched; 3 shared
+dimensions (`games`, `players`, `positions`) take additive changes
+only; cross-source via union views. Migration is **pure additive**
+(ADD COLUMN / INSERT / CREATE) — sidesteps every DuckDB FK-block gotcha.
+
+Decisions (detail in the two docs):
+- (a) `game_id` stays INTEGER + surrogate (≥10M) for FBref + new
+  `source`/`source_game_id` — **pushed back on VARCHAR recreate**.
+- (b) `games.stage` + `games.venue` (VARCHAR NULL; `stage` not `round`
+  — ROUND() clash).
+- (c) score → `home_goals/away_goals/home_pens/away_pens` on `games`,
+  parsed loader-side; validator cross-check. Understat backfill
+  deferred to one post-gather shot.
+- (d) multi-pos: source-aware `_position_policy.py` + coarse
+  `DF/MF/FW` codes in `positions`; primary-token wins.
+- (e) age → `players.player_dob` (back-computed, validated).
+- (f) MultiIndex flatten helper + curated `FBREF_COL_MAP`
+  anti-corruption layer, **fail loud on unmapped**.
+- (g) all-comps filter **inverted**: `read_schedule` game_id
+  membership = primary; URL-slug + round enum = fail-loud secondary.
+- (h) Option C source-separated tables (above).
+
+**⚠️ Shell was unavailable this whole session** (UNC mount error — bash
+could not start). State was verified via the pasted
+`validate_v104_ingest.py` output only: 9/10 Understat confirmed, DB
+grand totals identical to the 2026-06-05 `db_schema.md` dump (→ DB
+untouched since S21). **Still NOT verified (owed next session):**
+`git log`/`git status` (HEAD `c9b4ff0`? 5 ahead? clean tree?), and
+whether the soccerdata package / `league_dict.json` overlay moved.
+These are **pre-flight gate 1** in `v104_schema_migration.md` and must
+pass before any migration statement runs.
+
+## S22 implementation — UCL 2024-25 loaded end-to-end (steps 4–8 done)
+
+Pre-flight gates all passed (git HEAD c9b4ff0 confirmed — note: repo was
+already pushed, origin/main == HEAD, NOT 5-ahead as prior state said;
+DB untouched; observe-probes run). Then, observing-before-coding, two
+design-doc premises were corrected against real data (S14 lesson):
+
+- **Score shootout format is `(N) R–R (N)`** (e.g. `(1) 0–1 (4)` = reg
+  0–1, pens 1–4), NOT the doc's guessed `1 (4)`. Also `team_match`
+  GF/GA carry the same parens (`'1 (2)'`) — parse leading int.
+- **Player-match `pos` is a MIX**: granular (CB/LB/DM…, already in our
+  vocab) + coarse (DF/MF/FW) + multi (`DF,MF`) + `AM` (= our CAM). The
+  doc's "all coarse `DF,MF`" was the season-pos, not match-pos.
+
+New empirical findings banked:
+- **FBref `read_player_match_stats` exposes player NAME, no numeric id.**
+  → mint surrogate player_ids (base 50_000_000).
+- **Player dob drifts ±1–2 days across a player's matches** (FBref age
+  rounding). So the surrogate key is `(norm_name, nation)`, with a
+  **canonical dob = modal derived dob** stored on `players`. Keying on
+  exact dob over-split 878 players into 1163 — caught in dry-run.
+- **`team_match` exposes no game_id** → parse 8-char hash from
+  `match_report` URL; filter by membership in the clean `read_schedule`
+  set (decision g primary).
+- **`position_id` is Understat-native** (a source column, not derived);
+  FBref has none → `player_match_fbref.position_id` left NULL, link via
+  `effective_position` → `positions.position_code`. Vestigial column;
+  drop in a later cleanup migration if desired.
+- season comes back `'2425'` (mapped to `'2024-2025'`, reused Understat
+  SEASON map).
+
+Build status (active task step list):
 1. ✅ Commit overlay + setup script (S21).
 2. ✅ Probe team_match + player_match shapes for UCL (S21).
-3. **Schema delta design** (S22 start):
-   - `game_id` type change INTEGER → VARCHAR (FK-blocked ALTER per S17
-     — investigate if table-recreate dance is needed).
-   - `score` parsing into `home_goals` / `away_goals`.
-   - `round` + `venue` columns on `games`.
-   - Multi-position `pos` handling (`'DF,MF'` style).
-   - `age` text parsing (`'30-246'` format).
-   - MultiIndex column flattening for FBref output.
-   - All-comps team_match filter strategy (URL substring + round enum
-     cross-check) — code in loader, not config.
-   - Cross-source `player_id` strategy — defer entirely (option c per
-     v104_ingest_competitions.md).
-4. **Schema migration code** (S22) per S17 rules.
+3. ✅ Schema delta design — LOCKED (S22).
+4. ✅ **Migration applied** — `migrate_v104_fbref_schema.py` (additive,
+   idempotent, dry-run/--apply). games +8 cols, players +player_dob,
+   positions +DF/MF/FW, +team_match_fbref / player_match_fbref tables,
+   +team_match_all / player_match_all views.
+5. ✅ **`ingest_fbref.py` built** — Sections A (schedule→games) / B
+   (team_match→team_match_fbref) / C (player_match→players +
+   player_match_fbref). `_position_policy.py` extended source-aware
+   (`fbref_effective_position`, AM→CAM, primary-token). Dry-run/--apply.
+6. ✅ Dry-run UCL 2024-25 — eyeballed 189 / 378 / 5826, all guards pass.
+7. ✅ **Live load UCL 2024-25** — 189 games, 378 team, 878 players,
+   5826 player_match. Idempotent re-run confirmed (0 new).
+8. ✅ **`validate_v104_ingest.py` extended** (Section 10, Option C) +
+   run clean: invariant 378==2×189, score cross-check 0 mismatch, all
+   FK orphans 0, dob 878/878.
+9. ⬜ **Live load UCL 2025-26** — NEXT. NOT cached → ~70-min live
+   rate-limited fetch (`read_player_match_stats`). Same command,
+   `--season 2025-2026`. Run in a dedicated/background session.
+10. ⬜ Then replicate the pattern for UEL/UECL/continentals/WCQ/friendlies.
 5. **Build `ingest_fbref.py`** (S22).
 6. **Dry-run UCL 2024-25** — eyeball ~189 games / ~378 team_match
    after filter / ~5,826 player_match rows.
@@ -167,13 +243,28 @@ level WC/Euro/Copa/AFCON xG.
 ## Deferred
 
 - **Commit S21 work** — see "Commit message" at end.
+- **Commit S22 work** — docs (`v104_ingest_competitions.md` updated,
+  `v104_schema_migration.md` new, this file) AND code
+  (`migrate_v104_fbref_schema.py`, `ingest_fbref.py`,
+  `_position_policy.py` FBref extension, `validate_v104_ingest.py`
+  Section 10). NOTE: migration already APPLIED to the live DB; backups
+  at `worldcup.duckdb.s22-bak` (pre-migration) and
+  `worldcup.duckdb.s22-preload-bak` (post-migration, pre-FBref-load).
+- **Understat `games` goals backfill** — populate
+  `home_goals/away_goals` (+pens NULL) for the 3,198 existing rows from
+  `team_match_stats`, in one shot once all sources are gathered
+  (decision c).
 - GER-Bundesliga 2024-25 (soccerdata upgrade exhausted at S20).
-- **Probe files** committed in S21 for reference; **delete once
-  `ingest_fbref.py` lands** (S22 step 5):
-  - `src/load/v2_ingest/_probe_UCL_team_player_shapes.py`
-  - `src/load/v2_ingest/_probe_UCL_team_player_extended.py`
-  - (S20-era probes already in repo can also be cleaned then)
-- Regenerate `docs/db_schema.md` after schema migration + first load.
+- **Probe files — now deletable** (`ingest_fbref.py` has landed):
+  - `src/load/v2_ingest/_probe_UCL_team_player_shapes.py` (S21)
+  - `src/load/v2_ingest/_probe_UCL_team_player_extended.py` (S21)
+  - `src/load/v2_ingest/_probe_s22_schema_shapes.py` (S22)
+  - `src/load/v2_ingest/_probe_s22_pos_coverage.py` (S22)
+  - (S20-era probes too)
+- **Regenerate `docs/db_schema.md` — now DUE** (migration applied +
+  UCL loaded): `uv run python src/tools/dump_db_schema.py`.
+- **`player_match_fbref.position_id`** — vestigial NULL column
+  (Understat-only field); optional later cleanup-migration to drop it.
 - `derived_state_freshness` table + `check_freshness.py` tool.
 - Recompute `player_season_stats` for newly-loaded leagues.
 - Re-run paid-API check (api-football, Sportmonks) if modeling needs
@@ -226,6 +317,22 @@ From S21:
 - soccerdata's `_parse_table` doesn't filter columns — missing columns
   reflect what FBref serves, nothing more.
 - Cross-source `player_id` strategy: defer entirely (option c).
+
+From S22 (schema delta design):
+- **Option C (source-separated FBref fact tables)** is the integration
+  architecture — don't weld shape-only FBref rows into xG-dense
+  Understat tables. Understat fact tables stay untouched.
+- **Surrogate `game_id`, not VARCHAR** — never recreate FK-referenced
+  fact tables when an additive surrogate path exists. The "no xG" gap
+  is structural; let the schema show it (separate tables), don't hide
+  it as NULLs.
+- Migration is additive-only by construction → no DuckDB FK-block
+  gotchas in play.
+- Loader carries all parsing (surrogate id, schedule-membership filter,
+  score parse, MultiIndex flatten + fail-loud map, source-aware
+  position policy, age→DOB). `FBREF_COL_MAP` fail-loud is the
+  FBref-drift early-warning.
+- Name `stage` not `round` (DuckDB `ROUND()` clash).
 
 ## Commit message (for S21 close)
 
