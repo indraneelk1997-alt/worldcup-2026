@@ -3,10 +3,54 @@
 > **Fast-changing.** This is "where we are right now." Updated at the end
 > of each working session. For permanent facts/rules, see `Claude.md`.
 
-**Last updated:** end of S23 (2026-06-11)
-**Current version line:** V1.04 ingest complete for UCL (**2024-25 + 2025-26
-both loaded**). **S23 opened the dashboard/analysis track**: WC2026 squad
-anchor + EA FC 26 attribute prior both ingested. DB now 29 tables.
+**Last updated:** end of S24 (2026-06-11)
+**Current version line:** FBref club comps now cover **UCL + UEL + UECL**
+(both 24-25 & 25-26 each). WC2026 squad + EA FC 26 prior loaded (S23). DB 29
+tables; `players` 7537 (dob 4070 = 54%). Next acquisition: StatsBomb Open.
+
+## S24 outcome — UEL + UECL loaded; resolver overlap measured (then parked)
+
+Continued the data-acquisition track (sequencing: gather → THEN coverage →
+THEN resolver/blend). Shell-relay workflow throughout (rule 12).
+
+### Loaded — UEFA Europa League + Conference League, both seasons
+- Overlay extended: `data/config/league_dict.json` +`UEFA-Europa League`
+  (FBref `"UEFA Europa League"`) +`UEFA-Conference League` (FBref
+  `"UEFA Conference League"` — NOT "Europa Conference", verified vs cached
+  catalog). Re-ran `setup_soccerdata_overlay.py` (3 entries now).
+- Probe `_probe_uel_uecl_schedules.py` confirmed columns identical to UCL →
+  `ingest_fbref.py` reused with **zero code changes**.
+- Fetched both leagues in **parallel** (2 background dry-runs, read-only →
+  coexist; ~2h wall), then **4 applies sequentially** (game_id minting reads
+  committed max, so sequential = collision-free; ids now 10000378–10001061).
+  Applied: UEL 24-25 (189g/5851pm/911pl), UEL 25-26 (189/5899/921), UECL
+  24-25 (153/4718/880), UECL 25-26 (153/4736/889). All guards passed; UECL
+  lost 7 pm rows to PK INSERT-OR-IGNORE dedup (benign).
+- Totals: FBref games 1062 (378 UCL + 378 UEL + 306 UECL). `players` 4880→
+  **7537**, with_dob 1415→**4070 (54%)**. db_schema.md regenerated (29 tables).
+
+### Resolver overlap measured — then PARKED (premature until StatsBomb)
+`_probe_resolver_overlap.py` (uncommitted, S24) sized squad↔EA / squad↔players
+match BEFORE the StatsBomb load. Key finding (banked, revisit post-StatsBomb):
+- **EA is NOT a ~100% baseline** — only 68% (850/1247) of squad players match
+  EA by exact name; ~247 genuinely absent, concentrated in **whole dark
+  squads** (Qatar 26, Jordan 25, Iran 25, Uzbekistan 24, S.Africa/Egypt 21…)
+  — Gulf/Asian/African domestic leagues EA + our club data both miss.
+- Coverage matrix (exact name_norm): both=536, EA-only=314, empirical-only=32,
+  **neither(dark)=365**. EA ambiguity trivial (9, split by club+age).
+  Empirical: 568 any, 277 dob-confirmed, 244 name-only ambiguous.
+- **Owed doc fix:** soften the "~100% attribute baseline" claim in
+  `analysis_pipeline_design.md` (the locked *philosophy* holds; the number is
+  wrong). StatsBomb (intl tournaments) is expected to materially shrink the
+  dark set — that's WHY resolver/coverage waits for it.
+
+### S25 openers
+1. **StatsBomb Open ingest** (`ingest_statsbomb.py`, statsbombpy) — event +
+   360 for WC22/Euro24/Copa24/AFCON23. New sidecar schema. The real new build.
+2. Then re-measure coverage (re-run `_probe_resolver_overlap.py`), THEN build
+   the resolver (`wc2026_squad.ea_id` + `our_player_id`), THEN coverage score.
+3. Housekeeping: `validate_v104_ingest.py` for UEL/UECL + UCL 25-26; delete
+   probes; commit S24.
 
 ## S23 outcome — dashboard/analysis track opened; UCL 25-26 + squad + EA loaded
 

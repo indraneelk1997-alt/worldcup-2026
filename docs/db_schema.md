@@ -1,6 +1,6 @@
 # DuckDB schema reference
 
-_Generated: 2026-06-11T12:31:17_  
+_Generated: 2026-06-11T19:13:20_  
 _DB: `data/processed/worldcup.duckdb`_  
 _Tables: 29_  
 
@@ -330,7 +330,7 @@ uv run python src/tools/dump_db_schema.py
 
 ### `games`
 
-**Rows**: 3,576
+**Rows**: 4,260
 
 | Column | Type | Nullable | PK |
 |---|---|---|---|
@@ -573,7 +573,7 @@ uv run python src/tools/dump_db_schema.py
 
 ### `player_match_fbref`
 
-**Rows**: 11,676
+**Rows**: 32,873
 
 | Column | Type | Nullable | PK |
 |---|---|---|---|
@@ -824,7 +824,7 @@ uv run python src/tools/dump_db_schema.py
 
 ### `players`
 
-**Rows**: 4,880
+**Rows**: 7,537
 
 | Column | Type | Nullable | PK |
 |---|---|---|---|
@@ -943,7 +943,7 @@ uv run python src/tools/dump_db_schema.py
 
 ### `team_match_fbref`
 
-**Rows**: 756
+**Rows**: 2,124
 
 | Column | Type | Nullable | PK |
 |---|---|---|---|

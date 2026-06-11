@@ -3,5 +3,15 @@
     "FBref": "UEFA Champions League",
     "season_start": "Sep",
     "season_end": "May"
+  },
+  "UEFA-Europa League": {
+    "FBref": "UEFA Europa League",
+    "season_start": "Sep",
+    "season_end": "May"
+  },
+  "UEFA-Conference League": {
+    "FBref": "UEFA Conference League",
+    "season_start": "Sep",
+    "season_end": "May"
   }
 }
