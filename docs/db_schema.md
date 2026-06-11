@@ -1,8 +1,8 @@
 # DuckDB schema reference
 
-_Generated: 2026-06-11T19:13:20_  
+_Generated: 2026-06-11T23:56:07_  
 _DB: `data/processed/worldcup.duckdb`_  
-_Tables: 29_  
+_Tables: 33_  
 
 
 This file is auto-generated. Do not edit by hand. Regenerate with:
@@ -941,6 +941,184 @@ uv run python src/tools/dump_db_schema.py
   formation = None
 ```
 
+### `statsbomb_event`
+
+**Rows**: 187,924
+
+| Column | Type | Nullable | PK |
+|---|---|---|---|
+| `id` | `VARCHAR` | NO | ✓ |
+| `match_id` | `INTEGER` | NO |  |
+| `competition_id` | `INTEGER` | YES |  |
+| `season_id` | `INTEGER` | YES |  |
+| `event_index` | `INTEGER` | YES |  |
+| `period` | `INTEGER` | YES |  |
+| `timestamp` | `VARCHAR` | YES |  |
+| `minute` | `INTEGER` | YES |  |
+| `second` | `INTEGER` | YES |  |
+| `type` | `VARCHAR` | YES |  |
+| `possession` | `INTEGER` | YES |  |
+| `possession_team` | `VARCHAR` | YES |  |
+| `possession_team_id` | `INTEGER` | YES |  |
+| `team_id` | `INTEGER` | YES |  |
+| `team` | `VARCHAR` | YES |  |
+| `player_id` | `INTEGER` | YES |  |
+| `player` | `VARCHAR` | YES |  |
+| `position` | `VARCHAR` | YES |  |
+| `play_pattern` | `VARCHAR` | YES |  |
+| `x` | `DOUBLE` | YES |  |
+| `y` | `DOUBLE` | YES |  |
+| `end_x` | `DOUBLE` | YES |  |
+| `end_y` | `DOUBLE` | YES |  |
+| `duration` | `DOUBLE` | YES |  |
+| `outcome` | `VARCHAR` | YES |  |
+| `body_part` | `VARCHAR` | YES |  |
+| `under_pressure` | `BOOLEAN` | YES |  |
+| `pass_recipient_id` | `INTEGER` | YES |  |
+| `shot_xg` | `DOUBLE` | YES |  |
+| `raw` | `JSON` | YES |  |
+
+**Declared foreign keys**: none
+
+**Sample row**:
+
+```
+  id = '487e9dbc-86ea-4c62-a0e4-8ce67fbc0090'
+  match_id = 3930158
+  competition_id = 55
+  season_id = 282
+  event_index = 2
+  period = 1
+  timestamp = '00:00:00.000'
+  minute = 0
+  second = 0
+  type = 'Starting XI'
+  possession = 1
+  possession_team = 'Germany'
+  possession_team_id = 770
+  team_id = 942
+  team = 'Scotland'
+  player_id = None
+  player = None
+  position = None
+  play_pattern = 'Regular Play'
+  x = None
+  y = None
+  end_x = None
+  end_y = None
+  duration = 0.0
+  outcome = None
+  body_part = None
+  under_pressure = None
+  pass_recipient_id = None
+  shot_xg = None
+  raw = '{"id": "487e9dbc-86ea-4c62-a0e4-8ce67fbc0090", "index": 2, "period": 1, "tim...
+```
+
+### `statsbomb_frame`
+
+**Rows**: 2,698,999
+
+| Column | Type | Nullable | PK |
+|---|---|---|---|
+| `event_uuid` | `VARCHAR` | NO | ✓ |
+| `match_id` | `INTEGER` | NO |  |
+| `frame_idx` | `INTEGER` | NO | ✓ |
+| `x` | `DOUBLE` | YES |  |
+| `y` | `DOUBLE` | YES |  |
+| `teammate` | `BOOLEAN` | YES |  |
+| `actor` | `BOOLEAN` | YES |  |
+| `keeper` | `BOOLEAN` | YES |  |
+
+**Declared foreign keys**: none
+
+**Sample row**:
+
+```
+  event_uuid = '0d775a2f-9444-4897-88d8-16a36547b74f'
+  match_id = 3930158
+  frame_idx = 11
+  x = 70.98928390229128
+  y = 37.382010434678406
+  teammate = False
+  actor = False
+  keeper = False
+```
+
+### `statsbomb_frame_meta`
+
+**Rows**: 164,530
+
+| Column | Type | Nullable | PK |
+|---|---|---|---|
+| `event_uuid` | `VARCHAR` | NO | ✓ |
+| `match_id` | `INTEGER` | NO |  |
+| `visible_area` | `JSON` | YES |  |
+
+**Declared foreign keys**: none
+
+**Sample row**:
+
+```
+  event_uuid = '4015b333-9ddf-4993-a06d-9741f522847e'
+  match_id = 3930158
+  visible_area = '[29.384440346100025, 80.0, 0.0, 45.84746420463966, 0.0, 0.0, 48.718207577405...
+```
+
+### `statsbomb_match`
+
+**Rows**: 51
+
+| Column | Type | Nullable | PK |
+|---|---|---|---|
+| `match_id` | `INTEGER` | NO | ✓ |
+| `competition_id` | `INTEGER` | NO |  |
+| `season_id` | `INTEGER` | NO |  |
+| `match_date` | `DATE` | YES |  |
+| `kick_off` | `VARCHAR` | YES |  |
+| `match_week` | `INTEGER` | YES |  |
+| `competition_stage_id` | `INTEGER` | YES |  |
+| `competition_stage` | `VARCHAR` | YES |  |
+| `home_team_id` | `INTEGER` | YES |  |
+| `home_team` | `VARCHAR` | YES |  |
+| `away_team_id` | `INTEGER` | YES |  |
+| `away_team` | `VARCHAR` | YES |  |
+| `home_score` | `INTEGER` | YES |  |
+| `away_score` | `INTEGER` | YES |  |
+| `stadium_id` | `INTEGER` | YES |  |
+| `stadium` | `VARCHAR` | YES |  |
+| `referee_id` | `INTEGER` | YES |  |
+| `referee` | `VARCHAR` | YES |  |
+| `source` | `VARCHAR` | YES |  |
+| `ingested_at` | `TIMESTAMP` | YES |  |
+
+**Declared foreign keys**: none
+
+**Sample row**:
+
+```
+  match_id = 3930163
+  competition_id = 55
+  season_id = 282
+  match_date = datetime.date(2024, 6, 16)
+  kick_off = '19:00:00.000'
+  match_week = 1
+  competition_stage_id = 10
+  competition_stage = 'Group Stage'
+  home_team_id = 786
+  home_team = 'Serbia'
+  away_team_id = 768
+  away_team = 'England'
+  home_score = 0
+  away_score = 1
+  stadium_id = 370
+  stadium = 'VELTINS-Arena'
+  referee_id = 269
+  referee = 'Daniele Orsato'
+  source = 'statsbomb_open'
+  ingested_at = datetime.datetime(2026, 6, 11, 23, 51, 2, 502907)
+```
+
 ### `team_match_fbref`
 
 **Rows**: 2,124
@@ -1183,7 +1361,7 @@ uv run python src/tools/dump_db_schema.py
 - `team_match_stats`
 - `team_season_strength_v103` *(PK)*
 
-### `team` (11 tables)
+### `team` (12 tables)
 
 - `best_xi` *(PK)*
 - `player_match_fbref`
@@ -1192,6 +1370,7 @@ uv run python src/tools/dump_db_schema.py
 - `player_positions_v103` *(PK)*
 - `player_season_stats` *(PK)*
 - `scenario_teams`
+- `statsbomb_event`
 - `team_match_fbref` *(PK)*
 - `team_match_predictions_b12` *(PK)*
 - `team_match_stats` *(PK)*
@@ -1210,7 +1389,7 @@ uv run python src/tools/dump_db_schema.py
 - `team_match_stats`
 - `team_season_strength_v103`
 
-### `player_id` (8 tables)
+### `player_id` (9 tables)
 
 - `best_xi`
 - `fixture_lineups`
@@ -1220,6 +1399,7 @@ uv run python src/tools/dump_db_schema.py
 - `player_positions_v103` *(PK)*
 - `player_season_stats` *(PK)*
 - `players` *(PK)*
+- `statsbomb_event`
 
 ### `position_class` (7 tables)
 
@@ -1273,6 +1453,14 @@ uv run python src/tools/dump_db_schema.py
 - `team_match_fbref`
 - `team_match_stats`
 
+### `position` (5 tables)
+
+- `ea_fc26_player`
+- `player_match_fbref`
+- `player_match_stats`
+- `player_season_stats`
+- `statsbomb_event`
+
 ### `side` (5 tables)
 
 - `fixture_lineups` *(PK)*
@@ -1281,6 +1469,13 @@ uv run python src/tools/dump_db_schema.py
 - `team_match_predictions_b12`
 - `team_match_stats`
 
+### `away_team` (4 tables)
+
+- `fixtures`
+- `games`
+- `md38_predictions_b12`
+- `statsbomb_match`
+
 ### `created_at` (4 tables)
 
 - `league_averages_v103`
@@ -1288,16 +1483,23 @@ uv run python src/tools/dump_db_schema.py
 - `team_match_predictions_b12`
 - `team_season_strength_v103`
 
+### `home_team` (4 tables)
+
+- `fixtures`
+- `games`
+- `md38_predictions_b12`
+- `statsbomb_match`
+
+### `match_id` (4 tables)
+
+- `statsbomb_event`
+- `statsbomb_frame`
+- `statsbomb_frame_meta`
+- `statsbomb_match` *(PK)*
+
 ### `minutes` (4 tables)
 
 - `best_xi`
-- `player_match_fbref`
-- `player_match_stats`
-- `player_season_stats`
-
-### `position` (4 tables)
-
-- `ea_fc26_player`
 - `player_match_fbref`
 - `player_match_stats`
 - `player_season_stats`
@@ -1309,17 +1511,18 @@ uv run python src/tools/dump_db_schema.py
 - `predictions`
 - `scenario_teams` *(PK)*
 
+### `source` (4 tables)
+
+- `ea_fc26_player`
+- `games`
+- `statsbomb_match`
+- `wc2026_squad`
+
 ### `assists` (3 tables)
 
 - `player_match_fbref`
 - `player_match_stats`
 - `player_season_stats`
-
-### `away_team` (3 tables)
-
-- `fixtures`
-- `games`
-- `md38_predictions_b12`
 
 ### `club` (3 tables)
 
@@ -1333,11 +1536,17 @@ uv run python src/tools/dump_db_schema.py
 - `ea_fc26_playstyle` *(PK)*
 - `wc2026_squad`
 
-### `home_team` (3 tables)
+### `ingested_at` (3 tables)
+
+- `ea_fc26_player`
+- `statsbomb_match`
+- `wc2026_squad`
+
+### `match_date` (3 tables)
 
 - `fixtures`
 - `games`
-- `md38_predictions_b12`
+- `statsbomb_match`
 
 ### `opponent` (3 tables)
 
@@ -1375,41 +1584,35 @@ uv run python src/tools/dump_db_schema.py
 - `fixture_lineups` *(PK)*
 - `formation_slots` *(PK)*
 
-### `source` (3 tables)
-
-- `ea_fc26_player`
-- `games`
-- `wc2026_squad`
-
 ### `away_goals` (2 tables)
 
 - `games`
 - `md38_score_grid_b12` *(PK)*
+
+### `competition_id` (2 tables)
+
+- `statsbomb_event`
+- `statsbomb_match`
 
 ### `effective_position` (2 tables)
 
 - `player_match_fbref`
 - `player_match_stats`
 
+### `event_uuid` (2 tables)
+
+- `statsbomb_frame` *(PK)*
+- `statsbomb_frame_meta` *(PK)*
+
 ### `home_goals` (2 tables)
 
 - `games`
 - `md38_score_grid_b12` *(PK)*
 
-### `ingested_at` (2 tables)
-
-- `ea_fc26_player`
-- `wc2026_squad`
-
 ### `interceptions` (2 tables)
 
 - `ea_fc26_player`
 - `player_match_fbref`
-
-### `match_date` (2 tables)
-
-- `fixtures`
-- `games`
 
 ### `n_matches` (2 tables)
 
@@ -1456,6 +1659,11 @@ uv run python src/tools/dump_db_schema.py
 - `player_match_fbref`
 - `player_match_stats`
 
+### `possession` (2 tables)
+
+- `statsbomb_event`
+- `team_match_fbref`
+
 ### `priority` (2 tables)
 
 - `player_positions`
@@ -1466,6 +1674,16 @@ uv run python src/tools/dump_db_schema.py
 - `player_match_fbref`
 - `player_match_stats`
 
+### `referee` (2 tables)
+
+- `statsbomb_match`
+- `team_match_fbref`
+
+### `season_id` (2 tables)
+
+- `statsbomb_event`
+- `statsbomb_match`
+
 ### `shots` (2 tables)
 
 - `player_match_fbref`
@@ -1475,6 +1693,16 @@ uv run python src/tools/dump_db_schema.py
 
 - `ea_fc26_player`
 - `wc2026_squad`
+
+### `team_id` (2 tables)
+
+- `player_season_stats`
+- `statsbomb_event`
+
+### `x` (2 tables)
+
+- `statsbomb_event`
+- `statsbomb_frame`
 
 ### `xa` (2 tables)
 
@@ -1495,6 +1723,11 @@ uv run python src/tools/dump_db_schema.py
 
 - `md38_predictions_b12`
 - `predictions`
+
+### `y` (2 tables)
+
+- `statsbomb_event`
+- `statsbomb_frame`
 
 ### `yellow_cards` (2 tables)
 

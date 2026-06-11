@@ -3,10 +3,86 @@
 > **Fast-changing.** This is "where we are right now." Updated at the end
 > of each working session. For permanent facts/rules, see `Claude.md`.
 
-**Last updated:** end of S24 (2026-06-11)
-**Current version line:** FBref club comps now cover **UCL + UEL + UECL**
-(both 24-25 & 25-26 each). WC2026 squad + EA FC 26 prior loaded (S23). DB 29
-tables; `players` 7537 (dob 4070 = 54%). Next acquisition: StatsBomb Open.
+**Last updated:** end of S25 (2026-06-11)
+**Current version line:** StatsBomb Open sidecar built + **Euro 2024 loaded**
+(event + 360). FBref club comps cover UCL+UEL+UECL (both seasons); WC2026
+squad + EA FC 26 prior (S23). DB **33 base tables** (+2 views); `players`
+7537 (dob 4070 = 54%, untouched — sidecar is self-contained). Next: load the
+other 3 StatsBomb tournaments, then re-measure coverage + resolver.
+
+## S25 outcome — StatsBomb Open sidecar designed + Euro 2024 loaded
+
+Design-led session, then the build. Shell-relay throughout (rule 12).
+Full design in `docs/statsbomb_ingest_design.md` (D1–D3b, all observe-driven).
+
+### Observed (verified S25 via `sb.competitions()`, not inferred)
+- `statsbombpy` 1.19.0 added via `uv add` (→ `pyproject.toml` + `uv.lock`
+  changed). Open-data tier emits a benign `NoAuthWarning` per call.
+- The four targets by **composite `(competition_id, season_id)`** (season_id
+  is NOT unique alone — Euro24 & Copa24 both 282): **WC22 (43,106) +360 ·
+  Euro24 (55,282) +360 · Copa24 (223,282) NO 360 · AFCON23 (1267,107) +360.**
+- `sb.frames()` df path is broken (`InvalidIndexError`) → always use
+  `fmt='dict'`. Events `fmt='dict'` = lossless nested (the `raw` source).
+  Full-360 frames are anonymized (no player_id); per-shot `shot_freeze_frame`
+  is named + lives inside `statsbomb_event.raw`.
+
+### Built (all applied + verified)
+- **`migrate_statsbomb_schema.py`** — 4 NEW sidecar tables, additive,
+  idempotent. Dry-run **compiles every DDL in-memory** (rule 4) before apply;
+  native `JSON` type confirmed on this build; `index`→`event_index` (reserved).
+  Self-contained on StatsBomb's ID space → **zero links into players/games**,
+  no FK-block exposure. No declared FKs inside the sidecar (app-enforced,
+  mirrors `wc2026_squad.our_player_id`).
+- **`ingest_statsbomb.py --tournament {wc2022,euro2024,copa2024,afcon2023}`**
+  (`--apply`/`--limit`). Per-match `INSERT OR IGNORE` (bounded memory),
+  hybrid typed-cols + `raw` JSON built from one `fmt='dict'` pass.
+- **Euro 2024 loaded:** `statsbomb_match` 51 · `statsbomb_event` 187924 ·
+  `statsbomb_frame` 2698999 · `statsbomb_frame_meta` 164530 · 1340 shots
+  w/ xG · 495 distinct StatsBomb player_ids · comp/season `(55,282)`.
+  **Orphan checks 0** (frame→event, event→match). `json_extract` round-trip
+  on `raw` confirmed (top xG goals render correctly). Idempotent re-run safe.
+- DB base tables 29 → **33** (+`statsbomb_match/event/frame/frame_meta`).
+
+### S26 openers (clean)
+1. **Load the other 3 tournaments** — same loader, just `--tournament wc2022`
+   / `copa2024` / `afcon2023` (copa2024 has NO 360 → frame tables stay empty
+   for it, by design). Each ~similar scale; WC22 is the big one.
+2. **Re-measure coverage** — re-run `_probe_resolver_overlap.py`; StatsBomb's
+   495 intl players (×4 tournaments) should shrink the 247-strong dark set.
+3. **Then the resolver** (`statsbomb_player_id`/`wc2026_squad` xref), then
+   coverage score, then EA-empirical blend. Dashboard still S26+ (Streamlit).
+
+### Owed housekeeping (surface, schedule when convenient)
+- Regenerate `docs/db_schema.md` (now DUE — 4 new tables); included in the
+  S25 commit block below.
+- Add a `validate_v104_ingest.py`-style section (or a small
+  `validate_statsbomb.py`) for the sidecar — the orphan/count checks ran
+  inline this session but aren't yet a committed validator.
+- Still owed from S24: `validate_v104_ingest.py` for UEL/UECL + UCL 25-26;
+  soften "~100% EA attribute baseline" in `analysis_pipeline_design.md`;
+  delete spent probes (`_probe_resolver_overlap.py` — keep until coverage
+  re-measure, `_probe_uel_uecl_schedules.py`, `_probe_wc2026_squads.py`,
+  `_probe_nation_codes.py`).
+- Cosmetic: silence `NoAuthWarning` in `ingest_statsbomb.py` (snippet noted
+  in S25 chat) next time the file is touched.
+
+### S25 commit (run after regenerating db_schema.md)
+```
+S25: StatsBomb Open sidecar — design + Euro 2024 loaded (event + 360)
+
+New self-contained sidecar (own ID space, zero links into players/games):
+statsbomb_match/event/frame/frame_meta. Raw events stored (typed cols +
+raw JSON), aggregation deferred downstream. Euro 2024 fully loaded:
+51 matches / 187924 events / 2.7M frame rows / 1340 shots w/ xG; orphans 0.
+
+New:  docs/statsbomb_ingest_design.md
+      src/load/v2_ingest/migrate_statsbomb_schema.py
+      src/load/v2_ingest/ingest_statsbomb.py
+Updated: docs/session_state.md, docs/db_schema.md (33 tables),
+         pyproject.toml + uv.lock (statsbombpy 1.19.0)
+
+Refs: docs/statsbomb_ingest_design.md, docs/session_state.md
+```
 
 ## S24 outcome — UEL + UECL loaded; resolver overlap measured (then parked)
 
