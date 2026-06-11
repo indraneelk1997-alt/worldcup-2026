@@ -3,12 +3,104 @@
 > **Fast-changing.** This is "where we are right now." Updated at the end
 > of each working session. For permanent facts/rules, see `Claude.md`.
 
-**Last updated:** end of S25 (2026-06-11)
-**Current version line:** StatsBomb Open sidecar built + **Euro 2024 loaded**
-(event + 360). FBref club comps cover UCL+UEL+UECL (both seasons); WC2026
-squad + EA FC 26 prior (S23). DB **33 base tables** (+2 views); `players`
-7537 (dob 4070 = 54%, untouched — sidecar is self-contained). Next: load the
-other 3 StatsBomb tournaments, then re-measure coverage + resolver.
+**Last updated:** end of S26 (2026-06-12)
+**Current version line:** All 4 StatsBomb tournaments loaded (199 mt / 685788
+ev / 5.78M frames / 1718 intl players). Coverage re-measured. **Resolver built
++ applied**: `wc2026_squad.ea_id` 815, `our_player_id` 528. DB 33 base tables
+(no schema change this session). Next: coverage score + EA-empirical blend,
+then chessboard/dashboard.
+
+## S26 outcome — StatsBomb ×3 loaded; coverage re-measured; resolver built + applied
+
+Shell-relay throughout (rule 12). Three threads: finish StatsBomb acquisition,
+re-measure coverage, design+build the resolver.
+
+### StatsBomb acquisition complete (all 4 tournaments)
+- Loaded WC22 (43/106), Copa24 (223/282), AFCON23 (1267/107) via the same
+  `ingest_statsbomb.py` (one `--tournament` change each). NoAuthWarning
+  silenced (cosmetic edit). Sidecar totals: **199 matches / 685788 events /
+  5,783,812 frames / 1718 distinct StatsBomb players; orphans 0.**
+- **360 reality (observed, contradicts the catalog flag):** WC22 + Euro24 =
+  full 360; Copa24 = none (catalog-correct); **AFCON23 advertises
+  `match_available_360` but effectively HAS none** (1 event, 13 frame rows).
+  → usable spatial-validation set = **WC22 + Euro24 only**. Copa no-360
+  degradation branch verified (frames=0, no crash).
+
+### Coverage re-measured — `_probe_coverage_statsbomb.py` (new, deletable)
+- **Baseline drift resolved:** S24's "365 dark" was a mid-load snapshot; both
+  the old and new probe now agree on **351** at the full `players`=7537.
+  (Owed: the "365" mention upthread in S24 is superseded by 351.)
+- StatsBomb's net dark-rescue is only **29** (strict name+nation) → truly
+  dark 322 / overall 925 (74.2%) on a loose name basis.
+- **KEY finding (banked):** the dark set is **largely genuine absence**, not a
+  matching artifact — concentrated in **AFC/Gulf** (Jordan, Uzbekistan, Iraq,
+  Qatar, Iran). Their tournament, **AFC Asian Cup 2023, is NOT in StatsBomb
+  open data** (verified absent from the 80-row catalog) and has no free xG.
+  Evidence: Jordan 0/26 in all four tournaments (Jordan is AFC, not in AFCON);
+  Qatar 3/26 (in WC22 but real roster turnover WC22→2026). Fuzzy recovers
+  ~nothing here. → **resolves the parked PAID gate: only a paid Asian-coverage
+  feed lights up the dark set; free path structurally can't.**
+
+### Resolver — designed (D1–D5) + built + applied
+- `docs/resolver_design.md` (new) + `resolve_squad_links.py` (new). Fills
+  `wc2026_squad.ea_id` (**815**) + `our_player_id` (**528**), idempotent
+  `UPDATE ... FROM`. Coverage: both=472, ea_only=343, emp_only=56, **dark=376**
+  (corroborated — stricter/honester than the 351 loose-name count).
+- Model: candidate-by-`name_norm` → year+nation disambiguation ladders →
+  discrete-tier confidence (0.95 `exact+nation+year`, 0.85 `exact+nation`).
+  Nation MISMATCH → reject ("better dark than wrong"). EA nation alias overlay
+  (Holland→NED, Korea Republic→KOR…); **QAT genuinely absent from EA** (not an
+  alias gap).
+- **D1 REVISED on dry-run evidence:** guarded fuzzy mis-merged same-nation
+  same-age names — `mohamed alaa→salah` (EGY), `kim jin/min gyu`,
+  `kim tae/dae hyeon` (KOR) all passed nation+age. Fix: **strengthened
+  `name_norm` (strip ALL non-alphanumerics)** so punctuation/spacing/diacritic
+  variants (`son heung-min`==`son heung min`) become EXACT; **dropped generic
+  fuzzy** (gated `--fuzzy`, off). Net: same-quality coverage, zero false
+  positives, all-exact.
+- Minor open: `exact` accept-low = 0 (no unique-Understat-only matches) —
+  plausible, worth a later glance.
+
+### S27 openers (clean)
+1. **Coverage score (item c) + EA-empirical blend/shrinkage** — now unblocked:
+   `ea_id` (prior) + `our_player_id` (empirical) + per-link confidence all
+   exist. This is the next modelling decision (deferred in `data_sourcing.md`).
+2. Then chessboard (stage 2) + Streamlit dashboard.
+3. Optional/deferred: StatsBomb player xref (D2), club alias map (D5),
+   `--fuzzy` revisit with token-aware matching, accept-low=0 glance.
+
+### Owed housekeeping (surface, schedule)
+- **Soften "~100% EA attribute baseline"** in `analysis_pipeline_design.md` —
+  now have the hard number: EA corroborated-reaches **815/1247 = 65%**.
+- `validate_v104_ingest.py` for UEL/UECL + UCL 25-26 (S24 owed).
+- Delete spent probes: `_probe_coverage_statsbomb.py` (after coverage banked —
+  it is, here), `_probe_resolver_overlap.py`, `_probe_uel_uecl_schedules.py`,
+  `_probe_wc2026_squads.py`, `_probe_nation_codes.py`.
+- No `db_schema.md` regen needed (no DDL this session).
+
+### S26 commit
+```
+S26: StatsBomb ×3 loaded; coverage re-measured; squad resolver built + applied
+
+Loaded WC22/Copa24/AFCON23 into the sidecar (all 4 tournaments now: 199 mt /
+685788 ev / 5.78M frames / 1718 intl players; orphans 0). Observed AFCON23
+360 effectively absent despite catalog flag; usable 360 = WC22+Euro24.
+
+Coverage re-measured: dark set is largely genuine absence (AFC/Gulf squads;
+AFC Asian Cup 2023 not in free data) -> resolves paid gate.
+
+Resolver (resolve_squad_links.py + docs/resolver_design.md): fills
+wc2026_squad.ea_id (815) + our_player_id (528); name_norm hardened, fuzzy
+gated off after it mis-merged same-nation same-age names.
+
+New:  docs/resolver_design.md
+      src/load/v2_ingest/resolve_squad_links.py
+      src/load/v2_ingest/_probe_coverage_statsbomb.py  (deletable)
+Updated: src/load/v2_ingest/ingest_statsbomb.py (NoAuthWarning silence),
+         docs/session_state.md
+
+Refs: docs/resolver_design.md, docs/statsbomb_ingest_design.md, docs/session_state.md
+```
 
 ## S25 outcome — StatsBomb Open sidecar designed + Euro 2024 loaded
 

@@ -33,10 +33,16 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import warnings
 
 import duckdb
 import pandas as pd
 from statsbombpy import sb
+
+# statsbombpy re-emits this on EVERY api call (once per match x 2) — we are
+# intentionally on the free open-data tier. Silence by message (no fragile
+# import of the warning class).
+warnings.filterwarnings("ignore", message="credentials were not supplied")
 
 DB_PATH = "data/processed/worldcup.duckdb"
 
