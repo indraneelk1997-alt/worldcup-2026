@@ -1,8 +1,8 @@
 # DuckDB schema reference
 
-_Generated: 2026-06-11T09:33:59_  
+_Generated: 2026-06-11T12:31:17_  
 _DB: `data/processed/worldcup.duckdb`_  
-_Tables: 26_  
+_Tables: 29_  
 
 
 This file is auto-generated. Do not edit by hand. Regenerate with:
@@ -75,6 +75,164 @@ uv run python src/tools/dump_db_schema.py
   elo = 1946.90283203
   valid_from = datetime.date(2024, 5, 23)
   valid_to = datetime.date(2024, 8, 17)
+```
+
+### `ea_fc26_player`
+
+**Rows**: 16,228
+
+| Column | Type | Nullable | PK |
+|---|---|---|---|
+| `ea_id` | `INTEGER` | NO | ✓ |
+| `name` | `VARCHAR` | NO |  |
+| `name_norm` | `VARCHAR` | YES |  |
+| `ovr` | `INTEGER` | YES |  |
+| `position` | `VARCHAR` | YES |  |
+| `position_class` | `VARCHAR` | YES |  |
+| `alt_positions` | `VARCHAR` | YES |  |
+| `nation_name` | `VARCHAR` | YES |  |
+| `nation_code` | `VARCHAR` | YES |  |
+| `league` | `VARCHAR` | YES |  |
+| `club` | `VARCHAR` | YES |  |
+| `age` | `INTEGER` | YES |  |
+| `preferred_foot` | `VARCHAR` | YES |  |
+| `weak_foot` | `INTEGER` | YES |  |
+| `skill_moves` | `INTEGER` | YES |  |
+| `height_cm` | `INTEGER` | YES |  |
+| `weight_kg` | `INTEGER` | YES |  |
+| `ea_pace` | `INTEGER` | YES |  |
+| `ea_shooting` | `INTEGER` | YES |  |
+| `ea_passing` | `INTEGER` | YES |  |
+| `ea_dribbling` | `INTEGER` | YES |  |
+| `ea_defending` | `INTEGER` | YES |  |
+| `ea_physical` | `INTEGER` | YES |  |
+| `acceleration` | `INTEGER` | YES |  |
+| `sprint_speed` | `INTEGER` | YES |  |
+| `positioning` | `INTEGER` | YES |  |
+| `finishing` | `INTEGER` | YES |  |
+| `shot_power` | `INTEGER` | YES |  |
+| `long_shots` | `INTEGER` | YES |  |
+| `volleys` | `INTEGER` | YES |  |
+| `penalties` | `INTEGER` | YES |  |
+| `vision` | `INTEGER` | YES |  |
+| `crossing` | `INTEGER` | YES |  |
+| `free_kick_accuracy` | `INTEGER` | YES |  |
+| `short_passing` | `INTEGER` | YES |  |
+| `long_passing` | `INTEGER` | YES |  |
+| `curve` | `INTEGER` | YES |  |
+| `dribbling` | `INTEGER` | YES |  |
+| `agility` | `INTEGER` | YES |  |
+| `balance` | `INTEGER` | YES |  |
+| `reactions` | `INTEGER` | YES |  |
+| `ball_control` | `INTEGER` | YES |  |
+| `composure` | `INTEGER` | YES |  |
+| `interceptions` | `INTEGER` | YES |  |
+| `heading_accuracy` | `INTEGER` | YES |  |
+| `def_awareness` | `INTEGER` | YES |  |
+| `standing_tackle` | `INTEGER` | YES |  |
+| `sliding_tackle` | `INTEGER` | YES |  |
+| `jumping` | `INTEGER` | YES |  |
+| `stamina` | `INTEGER` | YES |  |
+| `strength` | `INTEGER` | YES |  |
+| `aggression` | `INTEGER` | YES |  |
+| `gk_diving` | `INTEGER` | YES |  |
+| `gk_handling` | `INTEGER` | YES |  |
+| `gk_kicking` | `INTEGER` | YES |  |
+| `gk_positioning` | `INTEGER` | YES |  |
+| `gk_reflexes` | `INTEGER` | YES |  |
+| `play_style_raw` | `VARCHAR` | YES |  |
+| `source_url` | `VARCHAR` | YES |  |
+| `card_url` | `VARCHAR` | YES |  |
+| `source` | `VARCHAR` | YES |  |
+| `ingested_at` | `TIMESTAMP` | YES |  |
+
+**Declared foreign keys**: none
+
+**Sample row**:
+
+```
+  ea_id = 203376
+  name = 'Virgil van Dijk'
+  name_norm = 'virgil van dijk'
+  ovr = 90
+  position = 'CB'
+  position_class = 'DEF'
+  alt_positions = None
+  nation_name = 'Holland'
+  nation_code = None
+  league = 'Premier League'
+  club = 'Liverpool'
+  age = 34
+  preferred_foot = 'Right'
+  weak_foot = 3
+  skill_moves = 2
+  height_cm = 193
+  weight_kg = 92
+  ea_pace = 73
+  ea_shooting = 60
+  ea_passing = 72
+  ea_dribbling = 72
+  ea_defending = 90
+  ea_physical = 87
+  acceleration = 66
+  sprint_speed = 78
+  positioning = 47
+  finishing = 52
+  shot_power = 81
+  long_shots = 64
+  volleys = 45
+  penalties = 62
+  vision = 53
+  crossing = 70
+  free_kick_accuracy = 70
+  short_passing = 80
+  long_passing = 83
+  curve = 60
+  dribbling = 70
+  agility = 54
+  balance = 50
+  reactions = 90
+  ball_control = 77
+  composure = 90
+  interceptions = 91
+  heading_accuracy = 88
+  def_awareness = 91
+  standing_tackle = 91
+  sliding_tackle = 87
+  jumping = 89
+  stamina = 75
+  strength = 93
+  aggression = 85
+  gk_diving = None
+  gk_handling = None
+  gk_kicking = None
+  gk_positioning = None
+  gk_reflexes = None
+  play_style_raw = "['Intercept+', 'Aerial Fortress', 'Anticipate', 'Bruiser', 'Jockey', 'Pinged...
+  source_url = 'https://www.ea.com/games/ea-sports-fc/ratings/player-ratings/virgil-van-dijk...
+  card_url = 'https://ratings-images-prod.pulse.ea.com/FC26/components/items/203376_en.webp'
+  source = 'eafc26'
+  ingested_at = datetime.datetime(2026, 6, 11, 12, 31, 17, 158494)
+```
+
+### `ea_fc26_playstyle`
+
+**Rows**: 15,032
+
+| Column | Type | Nullable | PK |
+|---|---|---|---|
+| `ea_id` | `INTEGER` | NO | ✓ |
+| `playstyle` | `VARCHAR` | NO | ✓ |
+| `tier` | `VARCHAR` | NO |  |
+
+**Declared foreign keys**: none
+
+**Sample row**:
+
+```
+  ea_id = 209331
+  playstyle = 'Finesse Shot'
+  tier = 'plus'
 ```
 
 ### `fixture_lineups`
@@ -172,7 +330,7 @@ uv run python src/tools/dump_db_schema.py
 
 ### `games`
 
-**Rows**: 3,387
+**Rows**: 3,576
 
 | Column | Type | Nullable | PK |
 |---|---|---|---|
@@ -415,7 +573,7 @@ uv run python src/tools/dump_db_schema.py
 
 ### `player_match_fbref`
 
-**Rows**: 5,826
+**Rows**: 11,676
 
 | Column | Type | Nullable | PK |
 |---|---|---|---|
@@ -666,7 +824,7 @@ uv run python src/tools/dump_db_schema.py
 
 ### `players`
 
-**Rows**: 4,343
+**Rows**: 4,880
 
 | Column | Type | Nullable | PK |
 |---|---|---|---|
@@ -785,7 +943,7 @@ uv run python src/tools/dump_db_schema.py
 
 ### `team_match_fbref`
 
-**Rows**: 378
+**Rows**: 756
 
 | Column | Type | Nullable | PK |
 |---|---|---|---|
@@ -947,6 +1105,62 @@ uv run python src/tools/dump_db_schema.py
   league = 'ENG-Premier League'
 ```
 
+### `wc2026_squad`
+
+**Rows**: 1,247
+
+| Column | Type | Nullable | PK |
+|---|---|---|---|
+| `squad_row_id` | `INTEGER` | NO | ✓ |
+| `nation_name` | `VARCHAR` | NO |  |
+| `nation_code` | `VARCHAR` | YES |  |
+| `player_name` | `VARCHAR` | NO |  |
+| `name_norm` | `VARCHAR` | NO |  |
+| `dob` | `DATE` | YES |  |
+| `club` | `VARCHAR` | YES |  |
+| `position_class` | `VARCHAR` | NO |  |
+| `shirt_no` | `INTEGER` | YES |  |
+| `caps` | `INTEGER` | YES |  |
+| `intl_goals` | `INTEGER` | YES |  |
+| `is_captain` | `BOOLEAN` | YES |  |
+| `our_player_id` | `INTEGER` | YES |  |
+| `link_method` | `VARCHAR` | YES |  |
+| `link_confidence` | `DOUBLE` | YES |  |
+| `ea_id` | `INTEGER` | YES |  |
+| `ea_link_method` | `VARCHAR` | YES |  |
+| `ea_link_confidence` | `DOUBLE` | YES |  |
+| `source` | `VARCHAR` | YES |  |
+| `source_url` | `VARCHAR` | YES |  |
+| `ingested_at` | `TIMESTAMP` | YES |  |
+
+**Declared foreign keys**: none
+
+**Sample row**:
+
+```
+  squad_row_id = 1
+  nation_name = 'Czech Republic'
+  nation_code = 'CZE'
+  player_name = 'Matěj Kovář'
+  name_norm = 'matej kovar'
+  dob = datetime.date(2000, 5, 17)
+  club = 'PSV Eindhoven'
+  position_class = 'GK'
+  shirt_no = 1
+  caps = 20
+  intl_goals = 0
+  is_captain = False
+  our_player_id = None
+  link_method = None
+  link_confidence = None
+  ea_id = None
+  ea_link_method = None
+  ea_link_confidence = None
+  source = 'wikipedia'
+  source_url = 'https://en.wikipedia.org/wiki/2026_FIFA_World_Cup_squads'
+  ingested_at = datetime.datetime(2026, 6, 11, 12, 22, 32, 522418)
+```
+
 ---
 
 ## Column-name graph
@@ -983,8 +1197,9 @@ uv run python src/tools/dump_db_schema.py
 - `team_match_stats` *(PK)*
 - `team_season_strength_v103` *(PK)*
 
-### `league` (9 tables)
+### `league` (10 tables)
 
+- `ea_fc26_player`
 - `fixtures`
 - `games`
 - `league_averages_v103`
@@ -1005,6 +1220,16 @@ uv run python src/tools/dump_db_schema.py
 - `player_positions_v103` *(PK)*
 - `player_season_stats` *(PK)*
 - `players` *(PK)*
+
+### `position_class` (7 tables)
+
+- `best_xi`
+- `ea_fc26_player`
+- `player_positions` *(PK)*
+- `player_positions_v103`
+- `player_season_stats`
+- `positions`
+- `wc2026_squad`
 
 ### `game_id` (6 tables)
 
@@ -1048,14 +1273,6 @@ uv run python src/tools/dump_db_schema.py
 - `team_match_fbref`
 - `team_match_stats`
 
-### `position_class` (5 tables)
-
-- `best_xi`
-- `player_positions` *(PK)*
-- `player_positions_v103`
-- `player_season_stats`
-- `positions`
-
 ### `side` (5 tables)
 
 - `fixture_lineups` *(PK)*
@@ -1078,6 +1295,13 @@ uv run python src/tools/dump_db_schema.py
 - `player_match_stats`
 - `player_season_stats`
 
+### `position` (4 tables)
+
+- `ea_fc26_player`
+- `player_match_fbref`
+- `player_match_stats`
+- `player_season_stats`
+
 ### `scenario_id` (4 tables)
 
 - `fixture_lineups` *(PK)*
@@ -1096,6 +1320,18 @@ uv run python src/tools/dump_db_schema.py
 - `fixtures`
 - `games`
 - `md38_predictions_b12`
+
+### `club` (3 tables)
+
+- `club_elo` *(PK)*
+- `ea_fc26_player`
+- `wc2026_squad`
+
+### `ea_id` (3 tables)
+
+- `ea_fc26_player` *(PK)*
+- `ea_fc26_playstyle` *(PK)*
+- `wc2026_squad`
 
 ### `home_team` (3 tables)
 
@@ -1127,12 +1363,6 @@ uv run python src/tools/dump_db_schema.py
 - `md38_predictions_b12`
 - `predictions`
 
-### `position` (3 tables)
-
-- `player_match_fbref`
-- `player_match_stats`
-- `player_season_stats`
-
 ### `position_code` (3 tables)
 
 - `formation_slots`
@@ -1144,6 +1374,12 @@ uv run python src/tools/dump_db_schema.py
 - `best_xi` *(PK)*
 - `fixture_lineups` *(PK)*
 - `formation_slots` *(PK)*
+
+### `source` (3 tables)
+
+- `ea_fc26_player`
+- `games`
+- `wc2026_squad`
 
 ### `away_goals` (2 tables)
 
@@ -1160,6 +1396,16 @@ uv run python src/tools/dump_db_schema.py
 - `games`
 - `md38_score_grid_b12` *(PK)*
 
+### `ingested_at` (2 tables)
+
+- `ea_fc26_player`
+- `wc2026_squad`
+
+### `interceptions` (2 tables)
+
+- `ea_fc26_player`
+- `player_match_fbref`
+
 ### `match_date` (2 tables)
 
 - `fixtures`
@@ -1169,6 +1415,21 @@ uv run python src/tools/dump_db_schema.py
 
 - `player_positions_v103`
 - `team_season_strength_v103`
+
+### `name_norm` (2 tables)
+
+- `ea_fc26_player`
+- `wc2026_squad`
+
+### `nation_code` (2 tables)
+
+- `ea_fc26_player`
+- `wc2026_squad`
+
+### `nation_name` (2 tables)
+
+- `ea_fc26_player`
+- `wc2026_squad`
 
 ### `np_xg` (2 tables)
 
@@ -1184,6 +1445,11 @@ uv run python src/tools/dump_db_schema.py
 
 - `player_match_fbref`
 - `player_match_stats`
+
+### `player_name` (2 tables)
+
+- `players`
+- `wc2026_squad`
 
 ### `position_id` (2 tables)
 
@@ -1204,6 +1470,11 @@ uv run python src/tools/dump_db_schema.py
 
 - `player_match_fbref`
 - `player_match_stats`
+
+### `source_url` (2 tables)
+
+- `ea_fc26_player`
+- `wc2026_squad`
 
 ### `xa` (2 tables)
 

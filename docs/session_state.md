@@ -3,10 +3,70 @@
 > **Fast-changing.** This is "where we are right now." Updated at the end
 > of each working session. For permanent facts/rules, see `Claude.md`.
 
-**Last updated:** end of S22 (2026-06-11)
-**Current version line:** V1.04 ingest — Understat 9/10 + **UCL 2024-25
-LIVE-LOADED via FBref (Option C), validated clean**. UCL 2025-26 pending
-(needs a live ~70-min fetch — not cached).
+**Last updated:** end of S23 (2026-06-11)
+**Current version line:** V1.04 ingest complete for UCL (**2024-25 + 2025-26
+both loaded**). **S23 opened the dashboard/analysis track**: WC2026 squad
+anchor + EA FC 26 attribute prior both ingested. DB now 29 tables.
+
+## S23 outcome — dashboard/analysis track opened; UCL 25-26 + squad + EA loaded
+
+Design + build session. Shell was unavailable to the assistant the whole
+session (WSL UNC mount error) → **new workflow (Claude.md rule 12): assistant
+hands copy-paste bash blocks, Indraneel runs them + pastes output.** Worked
+well. Read-only DB reads + dry-runs done concurrently with the live fetch.
+
+### Data loaded (all applied + verified)
+- **UCL 2025-26** via `ingest_fbref.py --season 2025-2026 --apply` (dry-run
+  cached first, ~off-cache apply). 189 games / 378 team_match_fbref / 5850
+  player_match_fbref. Player resolver: 341 reused + 537 newly minted, 0
+  rough-merges. `players` now **4880** (was 4343), **with_dob 1415** (was 878).
+  ⚠️ owed: `validate_v104_ingest.py` Section 10 not re-run for 25-26 (apply's
+  inline guards passed: 378==2×189, score xcheck, FK orphans 0).
+- **`wc2026_squad`** (new table) via `ingest_wc2026_squads.py --apply`:
+  1247 players / 48 nations / 48 captains. Idempotent re-run = 0 inserts
+  (natural-key UNIQUE confirmed; nextval PK confirmed).
+- **`ea_fc26_player`** (16228 men) + **`ea_fc26_playstyle`** (15032) via
+  `ingest_ea_fc26.py --apply`. INSERT BY NAME + float→int coercion confirmed.
+- `db_schema.md` regenerated → **29 tables**.
+
+### New files (S23, uncommitted)
+- `docs/analysis_pipeline_design.md` (spine; S22-close), `docs/data_sourcing.md`
+  (items a + b fully designed), `data/config/nation_codes.json` (48 WC nations
+  → FIFA-3, validated).
+- `src/load/v2_ingest/ingest_wc2026_squads.py`, `ingest_ea_fc26.py`.
+- `src/load/v2_ingest/_probe_wc2026_squads.py`, `_probe_nation_codes.py`
+  (probes — **now deletable**).
+- `notebooks/explore_worldcup.ipynb` (DB explorer, read-only short-lived conns),
+  `notebooks/explore_ea_fc26.ipynb` (EA CSV explorer).
+- EA Kaggle CSVs under `data/raw/eafc26/` (flynn28 = anchor; talha = backup).
+- Claude.md: rule 11 (S20-22 trial) **sunset**; rule 12 (shell-relay) added.
+
+### Key decisions banked (don't relitigate)
+- Squad source = **Wikipedia** "2026 FIFA World Cup squads" (only free source
+  with the full link key name+nation+dob+club in one parse; 48×~26=1247).
+- Nations parse from `<h3>` (groups are `<h2>`); accept a wikitable only if
+  cols == the 7-field squad schema (drops summary tables). DoB needs dateutil
+  (page mixes 'May 17, 2000' US + '8 October 1997' intl formats).
+- Matching model = **candidate-by-`name_norm`, then disambiguate by what each
+  candidate carries** (dob for FBref subset / club-alias+league for Understat
+  subset). Our `players` is thin (id,name,dob); 80% dob-NULL + Understat has
+  NO nation. Club too noisy → tiebreaker only.
+- EA anchor = **flynn28 EAFC26.csv** (has PlayStyles + GK + OVR; talha lacks
+  them). Filter GENDER='M'. 6 family scores `ea_`-prefixed (collide with sub
+  -attrs). PlayStyle tiers = base/plus only (no ++). EA nation spellings differ
+  ('Holland','Korea Republic') → reconcile in resolver, nation_code NULL for now.
+- **Sequencing (agreed):** gather data → decide paid → THEN coverage (item c)
+  → THEN EA-empirical blend/shrinkage. Don't fit coverage to a moving footprint.
+
+### S24 openers (clean)
+1. **EA↔squad / squad↔players resolver** — fill `wc2026_squad.ea_id` +
+   `our_player_id` + `link_method`/`link_confidence`. Needs EA-nation alias
+   (Holland→NED…) + club alias map. The first real coverage signal.
+2. Then continue data acquisition (international-first: WCQ/friendlies/NL/
+   continental; UEL/UECL; StatsBomb Open) — scoped by the squad roster.
+3. Coverage score (item c) + EA-empirical blend — AFTER acquisition.
+4. Housekeeping owed: `validate_v104_ingest.py` for UCL 25-26; delete probes;
+   **commit S22 + S23** (S22 still unpushed: origin/main=c9b4ff0, HEAD=c6f69b3).
 
 ## Latest repo state (verify with `git log` / `git status` at session start)
 
@@ -270,6 +330,15 @@ level WC/Euro/Copa/AFCON xG.
 - Re-run paid-API check (api-football, Sportmonks) if modeling needs
   xG for non-Understat / non-StatsBomb comps.
 - StatsBomb Open Data ingest track (S23+).
+- **S23 DASHBOARD + ANALYSIS track** — see new
+  `docs/analysis_pipeline_design.md` (agreed S22-close): Streamlit
+  dashboard (locked), pipeline = player Att/Mid/Def attributes → zonal
+  "chessboard" battles (xT-grounded) + playstyle modifiers → team
+  xScoreline → sim. Data: international-first (FBref WCQ/friendlies/
+  intl) + StatsBomb Open (spatial validation) + **EA Sports FC 26 attrs
+  via Kaggle CSV** (coverage solver / informative prior; NOT SoFIFA —
+  Cloudflare-blocked) + optional cheap paid API. Per-player coverage =
+  a feature + shrinkage weight. Full S23 pickup prompt in S22-close chat.
 
 ## Design decisions banked (don't relitigate)
 

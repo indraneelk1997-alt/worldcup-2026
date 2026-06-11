@@ -69,11 +69,17 @@ These are the hard-won rules. They override default helpfulness.
    unless explicitly told. Append-only is the default posture.
 10. **Update `docs/session_state.md` at the end of a working session**
     so the next session resumes cleanly.
-11. **(S20–S22 trial.)** For the next few sessions, do not push back on
-    tasks for being "too long" or "too big a detour." Surface subtasks
-    and scope-expansion notes, then ask whether to split across
-    sessions or pass in one — let Indraneel make the call. Sunset this
-    rule after S22 unless renewed.
+11. **(S20–S22 trial — SUNSET S23.)** Was: don't push back on tasks for
+    being "too long." Sunset per S23 pickup; not renewed. Normal pacing
+    (rule 1) applies again.
+12. **(Shell-relay workflow, S23.)** In Cowork sessions the assistant's
+    bash tool often can't mount the WSL repo (`UNC paths not supported`);
+    file tools (Read/Write/Edit/Glob) work fine. When the shell is down,
+    **the assistant does NOT run commands — it hands Indraneel
+    copy-pasteable bash blocks; Indraneel runs them in WSL and pastes the
+    output back.** Prefer read-only/observe commands (dry-run, `--read_only`
+    DuckDB, `git log`) and keep each block self-contained. The assistant
+    still writes the design docs directly via file tools in parallel.
 
 ## Recurring DuckDB gotchas (verified, not inferred)
 
