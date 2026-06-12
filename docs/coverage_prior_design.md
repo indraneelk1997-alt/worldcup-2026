@@ -196,6 +196,59 @@ can apply). **[OPEN] D-blend-1:** λ at dimension level (attacking vs defensive)
 - (resolved: D-cal-1 group granularity — per-player now; D-cov-1 recency — via
   source weights; D-blend-1 — dimension-level λ per §3.4.)
 
+## 8. As-built rating engine (S27)
+
+Evolved from the §3 design during build (with the maintainer): **3 role
+dimensions** (not 2), an **EA 6-bucket decomposition**, and **position-group
+percentiles** throughout. GKs are a **separate track** (own attrs/empirical),
+excluded from this engine.
+
+**Position groups** (`_position_groups.py`, `derive_position_groups.py`):
+3 source vocabularies → coarse {GK,DEF,MID,FWD}. Key rules: Understat wide
+attacking mids `AMR/AML` → **FWD** (they're wingers), `CAM/AMC` → **FWD**
+(maintainer: a #10's output is winger-like, keep MID = the pivot). Backs +
+wing-backs → DEF. Primary group = minutes-weighted dominant across sources;
+**GK guard** (squad/Wikipedia sets GK, outfield never reassigned to GK);
+Wikipedia fallback for the dark. Persisted: `wc2026_squad.primary_position_group`
++ `squad_position_profile` (per-source appearance counts).
+
+**EA decomposition** (`_ea_attribute_buckets.py`): each player gets **Attack /
+Possession / Defense** role ratings from EA sub-attributes:
+- role *bases* (discriminators): Attack = finishing/shot_power/long_shots/
+  penalties/heading_accuracy; Possession = short_pass/long_pass/crossing/
+  ball_control/vision; Defense = def_awareness/standing_tackle/sliding_tackle/
+  interceptions. (heading→Attack: accuracy = hitting a target to *score*.)
+- *bonus* buckets: Skills (volleys/dribbling/curve/agility/balance/free_kick),
+  IQ (positioning/composure/reactions/aggression), Physical (accel/sprint/
+  jumping/stamina/strength).
+- `role = 0.75·base + 0.25·weighted_bonus`; bonus weights per role (3/2/1):
+  Attack Skills>Phys>IQ, Possession IQ>Skills>Phys, Defense Phys>IQ>Skills.
+
+**Empirical metrics** (per-90, percentiled within position group; club v1):
+- **Attack** = `(goals + xa)/90`  [Understat only — = (xg+xa) threat +
+  (goals−xg) finishing bonus; FBref fallback dropped, too noisy small-sample].
+- **Possession** = `(key_passes + xg_buildup + xg_chain)/90`  [Understat].
+- **Defense** = `0.6·padj_pct + 0.4·suppression_pct`  [FBref cups, v2]:
+  padj = `(tackles_won+interceptions)/90 × (50/opp_possession%)` (so dominant-
+  team CBs aren't punished for low volume); suppression = minutes-weighted
+  (opp SoT-faced + goals-conceded), inverted. No GK saves / no cup xG (gaps).
+
+**The blend** (`_probe_adjusted_ratings.py` — the engine):
+```
+adj_pct_dim = (1 − λ_dim)·EA_role_pct + λ_dim·empirical_pct      (within group)
+λ_dim = min(minutes_dim/900, 1) · CAP_dim ;  CAP = {Attack .8, Possession .8, Defense .5}
+no empirical → λ=0 (pure prior);  no EA → empirical only;  GK excluded.
+```
+Defense CAP=0.5 because counting stats can't capture positional solidity → lean
+on the prior. Validated on star profiles (De Bruyne Poss 97, Haaland Att 96/
+Poss 40, Salah Att 97/Poss 93).
+
+**Known residuals (tunable, v2):** (1) small-sample young overperformers spike
+— needs stronger minutes-shrinkage; (2) elite CBs dinged on defense (Van Dijk
+100→69) — λ_def is the dial; (3) StatsBomb per-match stats, clutch term, and
+recency weighting NOT yet folded in (the next layer); (4) cross-source identity
+unification still deferred (FBref/Understat split ids).
+
 ## References
 - `analysis_pipeline_design.md`, `resolver_design.md`, `data_sourcing.md`
 - xGChain/xGBuildup (build-up value): https://understat.com (per-player build-up metrics)

@@ -3,12 +3,13 @@
 > **Fast-changing.** This is "where we are right now." Updated at the end
 > of each working session. For permanent facts/rules, see `Claude.md`.
 
-**Last updated:** end of S27 (2026-06-12)
-**Current version line:** Coverage reconciled (per-player + per-nation, 4
-sources; any-source 920/1247=74%, dark 327). Coverage/EA-calibration/prior-
-shrinkage design spine agreed (`docs/coverage_prior_design.md`). StatsBomb
-minutes derived → `statsbomb_player_match` (6201 rows). DB **34 base tables**.
-Next: per-90 percentile pipeline → coverage λ → per-player blend.
+**Last updated:** end of S27 (2026-06-12, cont.)
+**Current version line:** **Per-dimension adjusted-rating engine built end-to-end**
+(Attack/Possession/Defense; EA prior blended toward empirical by coverage λ).
+Position groups + EA 6-bucket decomposition + empirical per-90 percentiles +
+blend all working; star profiles validate (De Bruyne Poss 97, Haaland Att 96).
+DB **35 base tables**. Next: fold in StatsBomb stats + clutch + recency (v2),
+persist ratings, then chessboard.
 
 ## S27 outcome — coverage reconciliation + coverage/prior design spine + StatsBomb minutes
 
@@ -89,6 +90,51 @@ Updated: docs/session_state.md, docs/db_schema.md (34 tables)
 
 Refs: docs/coverage_prior_design.md, docs/session_state.md
 ```
+
+## S27 (cont.) — per-dimension adjusted-rating engine built
+
+Big modeling session on top of the S27 commit. Full as-built model in
+`docs/coverage_prior_design.md` §8. GKs are a SEPARATE track, excluded from this
+engine (Attack/Possession/Defense are outfield only).
+
+### Position groups (applied)
+- `_position_groups.py` (3 source vocabs → coarse) + `derive_position_groups.py`.
+  Understat `AMR/AML` (wingers) → FWD; `CAM/AMC` → FWD (maintainer: MID = the
+  pivot, not attacking mids). GK guard. Persisted
+  `wc2026_squad.primary_position_group` (DEF 399/FWD 371/MID 332/GK 145) +
+  `squad_position_profile` (per-source appearance counts). 71 MID→FWD vs Wiki.
+
+### EA decomposition (`_ea_attribute_buckets.py`)
+- 3 role buckets (Attack/Possession/Defense, clean discriminators) + 3 bonus
+  buckets (Skills/IQ/Physical) applied with role-weights (3/2/1 matrix);
+  `role = 0.75·base + 0.25·weighted_bonus`. heading_accuracy→Attack (= scoring).
+  Validated: Haaland top Attack, De Bruyne top Possession, Van Dijk top Defense.
+
+### Empirical per-90 percentiles (within position group, club v1)
+- Attack = (goals+xa)/90 [Understat only]; Possession =
+  (key_passes+xg_buildup+xg_chain)/90 [Understat]; Defense = 0.6·padj + 0.4·
+  suppression [FBref cups]. padj = possession-adjusted tackles+int (rescues
+  dominant-team CBs from the volume trap); suppression = inv(opp SoT+goals
+  conceded). Caught + banked: raw tackles+int badly misranks elite CBs.
+
+### The blend (`_probe_adjusted_ratings.py` — the engine)
+- `adj = (1−λ)·EA_role_pct + λ·emp_pct`; λ = min(min/900,1)·CAP;
+  CAP {Attack .8, Possession .8, Defense .5}. Reads like real scouting profiles.
+
+### Known residuals (v2 todo)
+- Small-sample young overperformers spike (need stronger minutes-shrinkage).
+- Elite CBs dinged on defense (Van Dijk 100→69) — λ_def is the dial; counting
+  stats can't capture solidity.
+- StatsBomb per-match stats + clutch + recency NOT yet folded in.
+- Cross-source identity unification still deferred.
+
+### Deletable validation probes
+`_probe_position_groups.py`, `_probe_ea_role_ratings.py`,
+`_probe_empirical_percentiles.py`, `_probe_coverage_audit.py`,
+`_probe_coverage_statsbomb.py`. (`_probe_adjusted_ea_v1.py` deleted — superseded
+by `_probe_adjusted_ratings.py`.) Permanent: `_position_groups.py`,
+`derive_position_groups.py`, `_ea_attribute_buckets.py`,
+`_probe_adjusted_ratings.py` (the engine).
 
 ## S26 outcome — StatsBomb ×3 loaded; coverage re-measured; resolver built + applied
 

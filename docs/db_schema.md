@@ -1,8 +1,8 @@
 # DuckDB schema reference
 
-_Generated: 2026-06-12T11:57:46_  
+_Generated: 2026-06-12T15:02:11_  
 _DB: `data/processed/worldcup.duckdb`_  
-_Tables: 34_  
+_Tables: 35_  
 
 
 This file is auto-generated. Do not edit by hand. Regenerate with:
@@ -941,6 +941,30 @@ uv run python src/tools/dump_db_schema.py
   formation = None
 ```
 
+### `squad_position_profile`
+
+**Rows**: 1,772
+
+| Column | Type | Nullable | PK |
+|---|---|---|---|
+| `squad_row_id` | `BIGINT` | YES |  |
+| `source` | `VARCHAR` | YES |  |
+| `position_group` | `VARCHAR` | YES |  |
+| `matches` | `BIGINT` | YES |  |
+| `minutes` | `BIGINT` | YES |  |
+
+**Declared foreign keys**: none
+
+**Sample row**:
+
+```
+  squad_row_id = 1
+  source = 'fbref'
+  position_group = 'GK'
+  matches = 14
+  minutes = 1260
+```
+
 ### `statsbomb_event`
 
 **Rows**: 685,788
@@ -1346,6 +1370,7 @@ uv run python src/tools/dump_db_schema.py
 | `source` | `VARCHAR` | YES |  |
 | `source_url` | `VARCHAR` | YES |  |
 | `ingested_at` | `TIMESTAMP` | YES |  |
+| `primary_position_group` | `VARCHAR` | YES |  |
 
 **Declared foreign keys**: none
 
@@ -1373,6 +1398,7 @@ uv run python src/tools/dump_db_schema.py
   source = 'wikipedia'
   source_url = 'https://en.wikipedia.org/wiki/2026_FIFA_World_Cup_squads'
   ingested_at = datetime.datetime(2026, 6, 11, 12, 22, 32, 522418)
+  primary_position_group = 'GK'
 ```
 
 ---
@@ -1458,6 +1484,15 @@ uv run python src/tools/dump_db_schema.py
 - `team_match_predictions_b12` *(PK)*
 - `team_match_stats` *(PK)*
 
+### `minutes` (6 tables)
+
+- `best_xi`
+- `player_match_fbref`
+- `player_match_stats`
+- `player_season_stats`
+- `squad_position_profile`
+- `statsbomb_player_match`
+
 ### `model_version` (6 tables)
 
 - `md38_evaluation_b12_b2` *(PK)*
@@ -1499,14 +1534,6 @@ uv run python src/tools/dump_db_schema.py
 - `statsbomb_match` *(PK)*
 - `statsbomb_player_match`
 
-### `minutes` (5 tables)
-
-- `best_xi`
-- `player_match_fbref`
-- `player_match_stats`
-- `player_season_stats`
-- `statsbomb_player_match`
-
 ### `position` (5 tables)
 
 - `ea_fc26_player`
@@ -1522,6 +1549,14 @@ uv run python src/tools/dump_db_schema.py
 - `team_match_fbref`
 - `team_match_predictions_b12`
 - `team_match_stats`
+
+### `source` (5 tables)
+
+- `ea_fc26_player`
+- `games`
+- `squad_position_profile`
+- `statsbomb_match`
+- `wc2026_squad`
 
 ### `away_team` (4 tables)
 
@@ -1550,13 +1585,6 @@ uv run python src/tools/dump_db_schema.py
 - `lineup_scenarios` *(PK)*
 - `predictions`
 - `scenario_teams` *(PK)*
-
-### `source` (4 tables)
-
-- `ea_fc26_player`
-- `games`
-- `statsbomb_match`
-- `wc2026_squad`
 
 ### `assists` (3 tables)
 
@@ -1667,6 +1695,11 @@ uv run python src/tools/dump_db_schema.py
 - `ea_fc26_player`
 - `player_match_fbref`
 
+### `matches` (2 tables)
+
+- `player_season_stats`
+- `squad_position_profile`
+
 ### `n_matches` (2 tables)
 
 - `player_positions_v103`
@@ -1746,6 +1779,11 @@ uv run python src/tools/dump_db_schema.py
 
 - `ea_fc26_player`
 - `wc2026_squad`
+
+### `squad_row_id` (2 tables)
+
+- `squad_position_profile`
+- `wc2026_squad` *(PK)*
 
 ### `x` (2 tables)
 
