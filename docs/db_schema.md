@@ -1,8 +1,8 @@
 # DuckDB schema reference
 
-_Generated: 2026-06-11T23:56:07_  
+_Generated: 2026-06-12T11:57:46_  
 _DB: `data/processed/worldcup.duckdb`_  
-_Tables: 33_  
+_Tables: 34_  
 
 
 This file is auto-generated. Do not edit by hand. Regenerate with:
@@ -943,7 +943,7 @@ uv run python src/tools/dump_db_schema.py
 
 ### `statsbomb_event`
 
-**Rows**: 187,924
+**Rows**: 685,788
 
 | Column | Type | Nullable | PK |
 |---|---|---|---|
@@ -1017,7 +1017,7 @@ uv run python src/tools/dump_db_schema.py
 
 ### `statsbomb_frame`
 
-**Rows**: 2,698,999
+**Rows**: 5,783,812
 
 | Column | Type | Nullable | PK |
 |---|---|---|---|
@@ -1047,7 +1047,7 @@ uv run python src/tools/dump_db_schema.py
 
 ### `statsbomb_frame_meta`
 
-**Rows**: 164,530
+**Rows**: 368,413
 
 | Column | Type | Nullable | PK |
 |---|---|---|---|
@@ -1067,7 +1067,7 @@ uv run python src/tools/dump_db_schema.py
 
 ### `statsbomb_match`
 
-**Rows**: 51
+**Rows**: 199
 
 | Column | Type | Nullable | PK |
 |---|---|---|---|
@@ -1117,6 +1117,42 @@ uv run python src/tools/dump_db_schema.py
   referee = 'Daniele Orsato'
   source = 'statsbomb_open'
   ingested_at = datetime.datetime(2026, 6, 11, 23, 51, 2, 502907)
+```
+
+### `statsbomb_player_match`
+
+**Rows**: 6,201
+
+| Column | Type | Nullable | PK |
+|---|---|---|---|
+| `match_id` | `BIGINT` | YES |  |
+| `player_id` | `BIGINT` | YES |  |
+| `player` | `VARCHAR` | YES |  |
+| `team` | `VARCHAR` | YES |  |
+| `team_id` | `BIGINT` | YES |  |
+| `competition_id` | `BIGINT` | YES |  |
+| `season_id` | `BIGINT` | YES |  |
+| `started` | `BOOLEAN` | YES |  |
+| `on_min` | `BIGINT` | YES |  |
+| `off_min` | `BIGINT` | YES |  |
+| `minutes` | `BIGINT` | YES |  |
+
+**Declared foreign keys**: none
+
+**Sample row**:
+
+```
+  match_id = 3930158
+  player_id = 5570
+  player = 'Manuel Neuer'
+  team = 'Germany'
+  team_id = 770
+  competition_id = 55
+  season_id = 282
+  started = True
+  on_min = 0
+  off_min = 93
+  minutes = 93
 ```
 
 ### `team_match_fbref`
@@ -1328,12 +1364,12 @@ uv run python src/tools/dump_db_schema.py
   caps = 20
   intl_goals = 0
   is_captain = False
-  our_player_id = None
-  link_method = None
-  link_confidence = None
-  ea_id = None
-  ea_link_method = None
-  ea_link_confidence = None
+  our_player_id = 50000575
+  link_method = 'exact+nation+year'
+  link_confidence = 0.95
+  ea_id = 242948
+  ea_link_method = 'exact+nation+year'
+  ea_link_confidence = 0.95
   source = 'wikipedia'
   source_url = 'https://en.wikipedia.org/wiki/2026_FIFA_World_Cup_squads'
   ingested_at = datetime.datetime(2026, 6, 11, 12, 22, 32, 522418)
@@ -1361,7 +1397,7 @@ uv run python src/tools/dump_db_schema.py
 - `team_match_stats`
 - `team_season_strength_v103` *(PK)*
 
-### `team` (12 tables)
+### `team` (13 tables)
 
 - `best_xi` *(PK)*
 - `player_match_fbref`
@@ -1371,6 +1407,7 @@ uv run python src/tools/dump_db_schema.py
 - `player_season_stats` *(PK)*
 - `scenario_teams`
 - `statsbomb_event`
+- `statsbomb_player_match`
 - `team_match_fbref` *(PK)*
 - `team_match_predictions_b12` *(PK)*
 - `team_match_stats` *(PK)*
@@ -1389,7 +1426,7 @@ uv run python src/tools/dump_db_schema.py
 - `team_match_stats`
 - `team_season_strength_v103`
 
-### `player_id` (9 tables)
+### `player_id` (10 tables)
 
 - `best_xi`
 - `fixture_lineups`
@@ -1400,6 +1437,7 @@ uv run python src/tools/dump_db_schema.py
 - `player_season_stats` *(PK)*
 - `players` *(PK)*
 - `statsbomb_event`
+- `statsbomb_player_match`
 
 ### `position_class` (7 tables)
 
@@ -1453,6 +1491,22 @@ uv run python src/tools/dump_db_schema.py
 - `team_match_fbref`
 - `team_match_stats`
 
+### `match_id` (5 tables)
+
+- `statsbomb_event`
+- `statsbomb_frame`
+- `statsbomb_frame_meta`
+- `statsbomb_match` *(PK)*
+- `statsbomb_player_match`
+
+### `minutes` (5 tables)
+
+- `best_xi`
+- `player_match_fbref`
+- `player_match_stats`
+- `player_season_stats`
+- `statsbomb_player_match`
+
 ### `position` (5 tables)
 
 - `ea_fc26_player`
@@ -1490,20 +1544,6 @@ uv run python src/tools/dump_db_schema.py
 - `md38_predictions_b12`
 - `statsbomb_match`
 
-### `match_id` (4 tables)
-
-- `statsbomb_event`
-- `statsbomb_frame`
-- `statsbomb_frame_meta`
-- `statsbomb_match` *(PK)*
-
-### `minutes` (4 tables)
-
-- `best_xi`
-- `player_match_fbref`
-- `player_match_stats`
-- `player_season_stats`
-
 ### `scenario_id` (4 tables)
 
 - `fixture_lineups` *(PK)*
@@ -1529,6 +1569,12 @@ uv run python src/tools/dump_db_schema.py
 - `club_elo` *(PK)*
 - `ea_fc26_player`
 - `wc2026_squad`
+
+### `competition_id` (3 tables)
+
+- `statsbomb_event`
+- `statsbomb_match`
+- `statsbomb_player_match`
 
 ### `ea_id` (3 tables)
 
@@ -1578,21 +1624,28 @@ uv run python src/tools/dump_db_schema.py
 - `player_positions_v103` *(PK)*
 - `positions` *(PK)*
 
+### `season_id` (3 tables)
+
+- `statsbomb_event`
+- `statsbomb_match`
+- `statsbomb_player_match`
+
 ### `slot_no` (3 tables)
 
 - `best_xi` *(PK)*
 - `fixture_lineups` *(PK)*
 - `formation_slots` *(PK)*
 
+### `team_id` (3 tables)
+
+- `player_season_stats`
+- `statsbomb_event`
+- `statsbomb_player_match`
+
 ### `away_goals` (2 tables)
 
 - `games`
 - `md38_score_grid_b12` *(PK)*
-
-### `competition_id` (2 tables)
-
-- `statsbomb_event`
-- `statsbomb_match`
 
 ### `effective_position` (2 tables)
 
@@ -1649,6 +1702,11 @@ uv run python src/tools/dump_db_schema.py
 - `player_match_fbref`
 - `player_match_stats`
 
+### `player` (2 tables)
+
+- `statsbomb_event`
+- `statsbomb_player_match`
+
 ### `player_name` (2 tables)
 
 - `players`
@@ -1679,11 +1737,6 @@ uv run python src/tools/dump_db_schema.py
 - `statsbomb_match`
 - `team_match_fbref`
 
-### `season_id` (2 tables)
-
-- `statsbomb_event`
-- `statsbomb_match`
-
 ### `shots` (2 tables)
 
 - `player_match_fbref`
@@ -1693,11 +1746,6 @@ uv run python src/tools/dump_db_schema.py
 
 - `ea_fc26_player`
 - `wc2026_squad`
-
-### `team_id` (2 tables)
-
-- `player_season_stats`
-- `statsbomb_event`
 
 ### `x` (2 tables)
 

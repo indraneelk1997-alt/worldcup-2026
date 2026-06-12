@@ -3,12 +3,92 @@
 > **Fast-changing.** This is "where we are right now." Updated at the end
 > of each working session. For permanent facts/rules, see `Claude.md`.
 
-**Last updated:** end of S26 (2026-06-12)
-**Current version line:** All 4 StatsBomb tournaments loaded (199 mt / 685788
-ev / 5.78M frames / 1718 intl players). Coverage re-measured. **Resolver built
-+ applied**: `wc2026_squad.ea_id` 815, `our_player_id` 528. DB 33 base tables
-(no schema change this session). Next: coverage score + EA-empirical blend,
-then chessboard/dashboard.
+**Last updated:** end of S27 (2026-06-12)
+**Current version line:** Coverage reconciled (per-player + per-nation, 4
+sources; any-source 920/1247=74%, dark 327). Coverage/EA-calibration/prior-
+shrinkage design spine agreed (`docs/coverage_prior_design.md`). StatsBomb
+minutes derived → `statsbomb_player_match` (6201 rows). DB **34 base tables**.
+Next: per-90 percentile pipeline → coverage λ → per-player blend.
+
+## S27 outcome — coverage reconciliation + coverage/prior design spine + StatsBomb minutes
+
+Three threads: reconcile all gathered data into a coverage picture, design the
+coverage/EA-calibration/prior-shrinkage spine, build the per-90 prerequisite.
+
+### Coverage reconciliation (`_probe_coverage_audit.py`, new, deletable)
+Per-player + per-nation coverage across the 4 sources. Name-based detection
+(cross-source identity gap: `our_player_id` reaches FBref cups but NOT Understat
+— disjoint id spaces; unifying identities deferred to attribute-synthesis).
+- Per-source (of 1247): EA 815 (65%), top5 504 (40%), cups 528 (42%), intl 287
+  (23%); **any-source 920 (74%), dark 327 (26%)**. Sources/player: 0→327, 1→256,
+  2→258, 3→262, 4→144.
+- Defensive-action coverage 625 (50%); position skew **mild** (cups patch
+  defenders); GK = special case (own track).
+- **KEY data-shape finding:** attacking well-served (Understat xG); defensive/
+  duel/dribble is a CLUB-football hole (Understat none; cups only tackles/int,
+  no xG; StatsBomb intl-only) → **EA carries the defensive load**, and the real
+  free-data gap is defensive depth, not dark rosters (the true paid argument,
+  parked).
+
+### Design spine — `docs/coverage_prior_design.md` (new, no model code yet)
+- **ONE per-player operation** (not group-calibrate-then-shrink): EA is a stale,
+  biased prior; pull each player toward THEIR OWN recent empirical percentile,
+  weighted by coverage λ. Empirical used once → no double-count. Group/league
+  de-bias demoted to optional v2 (only helps dark players).
+- Three empirical components, ALL **per-90, position-relative percentiles**:
+  attacking/buildup (top5 25-26≻24-25≻Euro24/Copa24≻AFCON23; WC22 excluded—too
+  old), defensive (UCL/UEL/UECL + intl tackles/int/duels), clutch (high-stakes
+  attack vs league baseline (+), fouls/cards (−); WC22 attack feeds clutch; no
+  positive defensive clutch). Recency = source weights, not a separate decay.
+- Blend: `attr_dim = (1−λ)·EA_pct + λ·empirical_pct + clutch`; dark → position-avg.
+- Coverage λ = weighted noisy-OR (top5 1.0>intl0.85>EA0.5>cups0.4); two numbers
+  (coverage_total dashboard, coverage_empirical=λ). Dimension-aware = v2.
+
+### Built — StatsBomb minutes (`derive_statsbomb_minutes.py`)
+- → `statsbomb_player_match` (6201 player-matches / 199 mt / 1717 players).
+  minutes from Starting XI + Substitution + red/2nd-yellow caps; match_end =
+  max(minute) over periods 1–4 (**period 5 = shootout, excluded** — fixed a
+  24-row >130 inflation). Validated: GER-SCO exact (Porteous 41', full 93, HT
+  subs 45/48); **0 team-matches not-starting-11**; ET caps 126.
+- DERIVED table → `--apply` rebuilds wholesale (CREATE OR REPLACE), safe.
+- `db_schema.md` regenerated (34 base tables).
+
+### S28 openers
+1. **StatsBomb per-match stat aggregation** (goals/shots/tackles/int/duels/
+   dribbles/fouls/cards from events → per-player-match) — next prerequisite; the
+   minutes now exist to per-90 it.
+2. **Per-90 percentile pipeline** (§3.1–3.3) across all 3 empirical sources →
+   position-relative attacking/defensive percentiles + clutch.
+3. Coverage λ computed + persisted (per-player + per-nation table).
+4. Per-player blend → attribute estimates. Open: clutch form/cap (D-blend-2);
+   tune weights/recency/saturation.
+
+### Owed housekeeping (carried)
+- **Soften "~100% EA baseline"** in `analysis_pipeline_design.md` — measured
+  EA reaches **815/1247 = 65%**.
+- `validate_v104_ingest.py` for UEL/UECL + UCL 25-26.
+- Delete spent probes: `_probe_coverage_audit.py` + `_probe_coverage_statsbomb.py`
+  (coverage banked), `_probe_resolver_overlap.py`, older S20–24 probes.
+
+### S27 commit
+```
+S27: coverage reconciliation + coverage/prior design spine + StatsBomb minutes
+
+Per-player + per-nation coverage audit across all 4 sources (name-based;
+cross-source identity gap surfaced). Banked the data-shape finding (defensive
+is the club hole; EA carries defence). Designed the coverage/EA-calibration/
+prior-shrinkage spine (one per-player blend toward own empirical percentile,
+per-90 position-relative; 3 components attacking/defensive/clutch; recency via
+source weights). Built StatsBomb minutes deriver -> statsbomb_player_match
+(6201 rows; period-5 shootout excluded; validated GER-SCO).
+
+New:  docs/coverage_prior_design.md
+      src/load/v2_ingest/_probe_coverage_audit.py  (deletable)
+      src/load/v2_ingest/derive_statsbomb_minutes.py
+Updated: docs/session_state.md, docs/db_schema.md (34 tables)
+
+Refs: docs/coverage_prior_design.md, docs/session_state.md
+```
 
 ## S26 outcome — StatsBomb ×3 loaded; coverage re-measured; resolver built + applied
 
