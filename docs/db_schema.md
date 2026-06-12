@@ -1,8 +1,8 @@
 # DuckDB schema reference
 
-_Generated: 2026-06-12T22:21:19_  
+_Generated: 2026-06-12T23:14:15_  
 _DB: `data/processed/worldcup.duckdb`_  
-_Tables: 38_  
+_Tables: 39_  
 
 
 This file is auto-generated. Do not edit by hand. Regenerate with:
@@ -1427,6 +1427,70 @@ uv run python src/tools/dump_db_schema.py
   league = 'ENG-Premier League'
 ```
 
+### `team_playstyle_blended`
+
+**Rows**: 48
+
+| Column | Type | Nullable | PK |
+|---|---|---|---|
+| `nation_fifa3` | `VARCHAR` | NO | ✓ |
+| `nation` | `VARCHAR` | YES |  |
+| `confederation` | `VARCHAR` | YES |  |
+| `n_tournament_rows` | `INTEGER` | YES |  |
+| `sum_evidence` | `DOUBLE` | YES |  |
+| `lambda_team` | `DOUBLE` | YES |  |
+| `has_empirical` | `BOOLEAN` | YES |  |
+| `prior_source` | `VARCHAR` | YES |  |
+| `directness` | `DOUBLE` | YES |  |
+| `width` | `DOUBLE` | YES |  |
+| `line_height` | `DOUBLE` | YES |  |
+| `ppda` | `DOUBLE` | YES |  |
+| `possession` | `DOUBLE` | YES |  |
+| `prior_directness` | `DOUBLE` | YES |  |
+| `prior_width` | `DOUBLE` | YES |  |
+| `prior_line_height` | `DOUBLE` | YES |  |
+| `prior_ppda` | `DOUBLE` | YES |  |
+| `prior_possession` | `DOUBLE` | YES |  |
+| `emp_directness` | `DOUBLE` | YES |  |
+| `emp_width` | `DOUBLE` | YES |  |
+| `emp_line_height` | `DOUBLE` | YES |  |
+| `emp_ppda` | `DOUBLE` | YES |  |
+| `emp_possession` | `DOUBLE` | YES |  |
+| `model_version` | `VARCHAR` | YES |  |
+| `created_at` | `TIMESTAMP` | YES |  |
+
+**Declared foreign keys**: none
+
+**Sample row**:
+
+```
+  nation_fifa3 = 'ALG'
+  nation = 'Algeria'
+  confederation = 'CAF'
+  n_tournament_rows = 1
+  sum_evidence = 0.25
+  lambda_team = 0.41826471433290874
+  has_empirical = True
+  prior_source = 'confederation'
+  directness = 0.5143785312877308
+  width = 0.7101802061413385
+  line_height = 0.5927890196367203
+  ppda = 0.7386736021417364
+  possession = 0.6884898749314208
+  prior_directness = 0.5921223958333334
+  prior_width = 0.629123263888889
+  prior_line_height = 0.3449435763888889
+  prior_ppda = 0.55078125
+  prior_possession = 0.4720052083333333
+  emp_directness = 0.40625
+  emp_width = 0.8229166666666666
+  emp_line_height = 0.9375
+  emp_ppda = 1.0
+  emp_possession = 0.9895833333333334
+  model_version = 'playstyle_blended_v1'
+  created_at = datetime.datetime(2026, 6, 12, 23, 14, 15, 182725)
+```
+
 ### `team_playstyle_empirical`
 
 **Rows**: 96
@@ -1632,7 +1696,7 @@ uv run python src/tools/dump_db_schema.py
 - `statsbomb_event`
 - `statsbomb_player_match`
 
-### `model_version` (8 tables)
+### `model_version` (9 tables)
 
 - `md38_evaluation_b12_b2` *(PK)*
 - `md38_predictions_b12` *(PK)*
@@ -1641,7 +1705,18 @@ uv run python src/tools/dump_db_schema.py
 - `player_adjusted_attributes`
 - `predictions`
 - `team_match_predictions_b12` *(PK)*
+- `team_playstyle_blended`
 - `team_playstyle_empirical`
+
+### `created_at` (7 tables)
+
+- `league_averages_v103`
+- `lineup_scenarios`
+- `player_adjusted_attributes`
+- `team_match_predictions_b12`
+- `team_playstyle_blended`
+- `team_playstyle_empirical`
+- `team_season_strength_v103`
 
 ### `position_class` (7 tables)
 
@@ -1652,15 +1727,6 @@ uv run python src/tools/dump_db_schema.py
 - `player_season_stats`
 - `positions`
 - `wc2026_squad`
-
-### `created_at` (6 tables)
-
-- `league_averages_v103`
-- `lineup_scenarios`
-- `player_adjusted_attributes`
-- `team_match_predictions_b12`
-- `team_playstyle_empirical`
-- `team_season_strength_v103`
 
 ### `game_id` (6 tables)
 
@@ -1858,6 +1924,12 @@ uv run python src/tools/dump_db_schema.py
 - `player_positions_v103` *(PK)*
 - `positions` *(PK)*
 
+### `possession` (3 tables)
+
+- `statsbomb_event`
+- `team_match_fbref`
+- `team_playstyle_blended`
+
 ### `slot_no` (3 tables)
 
 - `best_xi` *(PK)*
@@ -1974,6 +2046,11 @@ uv run python src/tools/dump_db_schema.py
 - `ea_fc26_player`
 - `wc2026_squad`
 
+### `nation` (2 tables)
+
+- `player_match_fbref`
+- `team_playstyle_blended`
+
 ### `nation_code` (2 tables)
 
 - `ea_fc26_player`
@@ -2029,10 +2106,10 @@ uv run python src/tools/dump_db_schema.py
 - `ea_fc26_player`
 - `player_adjusted_attributes_wide`
 
-### `possession` (2 tables)
+### `ppda` (2 tables)
 
-- `statsbomb_event`
-- `team_match_fbref`
+- `team_match_stats`
+- `team_playstyle_blended`
 
 ### `priority` (2 tables)
 

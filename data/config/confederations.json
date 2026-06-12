@@ -1,0 +1,37 @@
+{
+  "_comment": "Nation -> FIFA confederation, for the D2 confederation-mean prior (docs/d2_prior_blend_design.md). Keys cover both naming spaces the deriver sees: the 48 WC2026 nation names (nation_codes.json keys) AND the 32 non-qualifier StatsBomb team strings (so the empirical pool can be grouped by region directly). The 3 aliased SB strings resolve to nation names already present, so they need no separate entry. Confederations: UEFA, CONMEBOL, CONCACAF, CAF, AFC, OFC.",
+
+  "Austria": "UEFA", "Belgium": "UEFA", "Bosnia and Herzegovina": "UEFA",
+  "Croatia": "UEFA", "Czech Republic": "UEFA", "England": "UEFA", "France": "UEFA",
+  "Germany": "UEFA", "Netherlands": "UEFA", "Norway": "UEFA", "Portugal": "UEFA",
+  "Scotland": "UEFA", "Spain": "UEFA", "Sweden": "UEFA", "Switzerland": "UEFA",
+  "Turkey": "UEFA",
+
+  "Argentina": "CONMEBOL", "Brazil": "CONMEBOL", "Colombia": "CONMEBOL",
+  "Ecuador": "CONMEBOL", "Paraguay": "CONMEBOL", "Uruguay": "CONMEBOL",
+
+  "Canada": "CONCACAF", "Curaçao": "CONCACAF", "Haiti": "CONCACAF",
+  "Mexico": "CONCACAF", "Panama": "CONCACAF", "United States": "CONCACAF",
+
+  "Algeria": "CAF", "Cape Verde": "CAF", "DR Congo": "CAF", "Egypt": "CAF",
+  "Ghana": "CAF", "Ivory Coast": "CAF", "Morocco": "CAF", "Senegal": "CAF",
+  "South Africa": "CAF", "Tunisia": "CAF",
+
+  "Australia": "AFC", "Iran": "AFC", "Iraq": "AFC", "Japan": "AFC", "Jordan": "AFC",
+  "Qatar": "AFC", "Saudi Arabia": "AFC", "South Korea": "AFC", "Uzbekistan": "AFC",
+
+  "New Zealand": "OFC",
+
+  "Albania": "UEFA", "Denmark": "UEFA", "Georgia": "UEFA", "Hungary": "UEFA",
+  "Italy": "UEFA", "Poland": "UEFA", "Romania": "UEFA", "Serbia": "UEFA",
+  "Slovakia": "UEFA", "Slovenia": "UEFA", "Ukraine": "UEFA", "Wales": "UEFA",
+
+  "Bolivia": "CONMEBOL", "Chile": "CONMEBOL", "Peru": "CONMEBOL", "Venezuela": "CONMEBOL",
+
+  "Costa Rica": "CONCACAF", "Jamaica": "CONCACAF",
+
+  "Angola": "CAF", "Burkina Faso": "CAF", "Cameroon": "CAF", "Equatorial Guinea": "CAF",
+  "Gambia": "CAF", "Guinea": "CAF", "Guinea-Bissau": "CAF", "Mali": "CAF",
+  "Mauritania": "CAF", "Mozambique": "CAF", "Namibia": "CAF", "Nigeria": "CAF",
+  "Tanzania": "CAF", "Zambia": "CAF"
+}

@@ -3,15 +3,89 @@
 > **Fast-changing.** This is "where we are right now." Updated at the end
 > of each working session. For permanent facts/rules, see `Claude.md`.
 
-**Last updated:** end of S31 (2026-06-12)
-**Current version line:** **Chessboard IMPLEMENTATION started — D2 empirical
-playstyle leg DONE.** `team_playstyle_empirical` built + applied: 96
-team-tournament rows from the 4 StatsBomb intl tournaments, 5 percentile-normalised
-axes. DB now **38 base tables**. Chessboard design (D1–D7) locked S30 in
+**Last updated:** end of S32 (2026-06-12)
+**Current version line:** **Chessboard IMPLEMENTATION — D2 team playstyle FULLY
+DONE (empirical → nation map → prior+blend).** `team_playstyle_blended` built +
+applied: **48 WC2026 nations × 5 axes**, blended `(1−λ)·prior + λ·empirical`. DB
+now **39 base tables**. Chessboard design (D1–D7) locked S30 in
 `docs/chessboard_design.md`; **battle resolution (item 8) still deferred**.
-`player_adjusted_attributes_wide` (S29) remains the attribute input. Next:
-StatsBomb-team→2026-nation map, then the D2 **prior leg + blend**, then code
-chessboard items 1–7.
+`player_adjusted_attributes_wide` (S29) is the attribute input. Next: **code
+chessboard items 1–7** (opener #3), THEN design item 8.
+
+## S32 outcome — D2 team playstyle FINISHED (nation map + prior/blend)
+
+Shell-relay throughout (rule 12). Completed the D2 leg: bridged the S31 empirical
+table to the 48 nations, then designed + built + applied the prior+blend.
+Design docs: **`docs/d2_nation_map.md`**, **`docs/d2_prior_blend_design.md`**.
+
+### Built — `derive_team_playstyle_blended.py` → `team_playstyle_blended` (DB 38→39)
+One row per **WC2026 nation (48)**, 5 axes blended `(1−λ_team)·prior + λ_team·
+empirical`, self-contained on FIFA-3 (no FK exposure). `--apply` = CREATE OR
+REPLACE. Stores blended axes + `lambda_team` + the prior + the empirical combine
++ `has_empirical`/`prior_source` for full audit. Verified: Spain poss 0.835/line
+0.888, Germany line 0.842/poss 0.852, Portugal wide 0.673 vs Spain narrow 0.212,
+Uruguay press 0.862 (Bielsa) — reads like scouting profiles.
+
+### The model (full detail in d2_prior_blend_design.md)
+- **Nation map:** SB team string → FIFA-3 via `nation_codes.json` + 3-entry
+  `statsbomb_team_aliases.json` (Cape Verde Islands/Congo DR/Côte d'Ivoire).
+  71 SB teams → 39 qualifiers map, 32 non-qualifiers drop, **9 nations dark**
+  (Bosnia, Curaçao, Haiti, Iraq, Jordan, NZ, Norway, Sweden, Uzbekistan).
+  Verified 39/32/9 against the live 96-row table. Kept all 96 rows / no re-norm.
+- **λ_team** = `λ_max·(1−exp(−Σe/τ))`; `e_r = recency × volume × continuity` per
+  (nation,tournament) row, same currency combines the rows AND sets trust.
+  recency: 2024=1.0, WC22=ρ. volume `m/(m+m₀)`. continuity from
+  `coach_continuity.json` (1.0 same coach, 0.5 changed — gathered S32 from a
+  dated June-2026 source; 59 qualifier rows, 24 same / 35 changed).
+- **Prior = confederation mean** (empirical-Bayes shrinkage; `confederations.json`,
+  80 nations incl. non-qualifiers in the pool). Only NZ (sole OFC) → global mean.
+  Dark sides = pure prior (λ=0). Formalises the "non-qualifier sides as proxies"
+  idea from d2_nation_map.md.
+- **Tuning (S32 sweep, `_probe_blend_sweep.py`):** less shrinkage chosen so
+  tournament identity expresses. **Locked S2b: `ρ=0.8, m₀=3, λ_max=0.9, τ=0.4`**
+  (env-overridable). Elites λ≈0.80–0.86, thin/coach-changed ≈0.35, dark 0;
+  higher τ separates well-covered from thin rather than a uniform lift.
+
+### Files (S32, uncommitted)
+- New: `docs/d2_nation_map.md`, `docs/d2_prior_blend_design.md`,
+  `data/config/statsbomb_team_aliases.json`, `data/config/coach_continuity.json`,
+  `data/config/confederations.json`,
+  `src/load/v2_ingest/derive_team_playstyle_blended.py`,
+  `src/load/v2_ingest/_probe_blend_sweep.py` (**deletable**).
+- Updated: `docs/db_schema.md` (39 tables), `docs/session_state.md`.
+
+### S33 openers
+1. **Code chessboard items 1–7** (opener #3, STARTED S32) — config-driven,
+   `data/config/` pattern: (1) zone grid + xT collapse, (2) position→home-cell
+   map, (3) role kernels, (4) playstyle-axis→kernel transforms, (5) PlayStyle→
+   family map, (6) attribute-relevance matrix [+ tier semantics]. Consumes
+   `team_playstyle_blended` + `player_adjusted_attributes_wide`.
+2. THEN design **item 8 — battle resolution**.
+3. v2 banked (D2): per-axis λ_max; τ calibration; leave-one-out confederation
+   prior; non-qualifier-as-proxy hand priors; externalise blend tunables to a
+   `d2_blend_params.json`; coach-continuity as graded not binary.
+
+### S32 commit (run after review)
+```
+S32: D2 team playstyle finished — nation map + confederation-prior blend
+
+Bridged team_playstyle_empirical (S31) to the 48 WC2026 nations and built the
+prior+blend -> team_playstyle_blended (48 nations x 5 axes; DB 39 tables).
+Nation map = nation_codes + 3 SB aliases (71 SB teams -> 39 qualifiers, 9 dark).
+lambda_team = lambda_max*(1-exp(-sum_e/tau)); e_r = recency x volume x continuity
+(coach_continuity.json, gathered from a dated 2026 source). Prior = confederation
+mean (confederations.json; empirical-Bayes shrinkage). Tuned via _probe_blend_
+sweep.py; locked S2b (rho=0.8, m0=3, lambda_max=0.9, tau=0.4) for tournament
+identity over shrinkage. Env-overridable tunables; blend math in one reusable fn.
+
+New:  docs/d2_nation_map.md, docs/d2_prior_blend_design.md,
+      data/config/{statsbomb_team_aliases,coach_continuity,confederations}.json,
+      src/load/v2_ingest/derive_team_playstyle_blended.py,
+      src/load/v2_ingest/_probe_blend_sweep.py (deletable)
+Updated: docs/session_state.md, docs/db_schema.md (39 tables)
+
+Refs: docs/d2_prior_blend_design.md, docs/d2_nation_map.md, docs/chessboard_design.md
+```
 
 ## S31 outcome — team-playstyle EMPIRICAL leg built (D2 implementation begins)
 

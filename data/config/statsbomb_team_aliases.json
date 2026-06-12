@@ -1,0 +1,6 @@
+{
+  "_comment": "StatsBomb team string -> nation_codes.json key, ONLY for the 3 SB strings that don't exact-match our WC2026 nation names. Resolution rule (consumer): nation_key = aliases.get(sb_team, sb_team); fifa3 = nation_codes[nation_key] (KeyError/None => SB team is NOT a 2026 qualifier -> not joined into the 2026 model). All other 68 SB strings match nation_codes.json keys exactly. Verified S32 against the live 96-row team_playstyle_empirical dump (71 distinct SB teams).",
+  "Cape Verde Islands": "Cape Verde",
+  "Congo DR": "DR Congo",
+  "Côte d'Ivoire": "Ivory Coast"
+}
