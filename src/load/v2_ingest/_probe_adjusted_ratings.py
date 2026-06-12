@@ -5,9 +5,12 @@ EA role rating (prior) toward empirical performance, per dimension.
 Per dimension d in {Attack, Possession, Defense}, all as percentiles within
 primary_position_group:
     adjusted_pct = (1 - lambda_d)*EA_role_pct + lambda_d*empirical_pct
-    lambda_d = min(minutes_d / 900, 1) * CAP_d
-    CAP: Attack/Possession 0.8 (empirical strong), Defense 0.5 (empirical weak —
-         volume/solidity can't fully capture positional defending, lean on prior)
+    lambda_d = min(minutes_d / 900, 1) * CAP_d        # CAP = per-dim confidence
+    CAP (LOCKED S28, see docs/blend_redesign.md): Attack 0.60 / Possession 0.50 /
+         Defense 0.25. The ordering encodes data reliability (Understat xG best ->
+         most empirical weight; cups counting-stat proxy worst -> least). Symmetric
+         blend; the low CAP already bounds the max swing to CAP*100, so no
+         asymmetry/clamp needed. Override per-run via CAP_ATT/CAP_POSS/CAP_DEF env.
 
 Empirical (club, v1):
   Attack     = (goals + xa)/90                         [Understat ONLY now]
@@ -19,6 +22,7 @@ EA role rating from _ea_attribute_buckets. Read-only.
 """
 from __future__ import annotations
 
+import os
 import re
 import sys
 
@@ -30,18 +34,33 @@ import _ea_attribute_buckets as eab
 
 DB = "data/processed/worldcup.duckdb"
 MIN_MINS, SAT = 270, 900
-CAP = {"Attack": 0.8, "Possession": 0.8, "Defense": 0.5}
+CAP = {
+    "Attack": float(os.environ.get("CAP_ATT", 0.60)),
+    "Possession": float(os.environ.get("CAP_POSS", 0.50)),
+    "Defense": float(os.environ.get("CAP_DEF", 0.25)),
+}
 PADJ_W, SUPP_W = 0.6, 0.4
 DIMS = ["Attack", "Possession", "Defense"]
+
+# Option A (S28, docs/blend_redesign.md): only blend dimensions where the position
+# group makes the empirical signal meaningful; off-role dims stay at the pure EA
+# prior (lam forced to 0). DEF attacking = goals+xa set-piece noise; FWD defending
+# = cups-tackle noise. MID (pivots/box-to-box, NOT CAMs/wingers) keeps all three.
+RELEVANT = {
+    "DEF": {"Possession", "Defense"},
+    "MID": {"Attack", "Possession", "Defense"},
+    "FWD": {"Attack", "Possession"},
+}
 
 
 def hard(s):
     return re.sub(r"[^a-z0-9]", "", s) if isinstance(s, str) else ""
 
 
-def main() -> int:
-    pd.set_option("display.width", 230)
-    con = duckdb.connect(DB, read_only=True)
+def build(con):
+    """Construct the per-player blended-ratings dataframe (read-only). Returns df
+    with ea_<dim>/ea_<dim>_pct/adj_<dim>/lam_<dim> etc. Caller owns the connection
+    (so other probes can reuse this without re-deriving the empirical pipeline)."""
     sq = con.sql("SELECT name_norm, nation_code nat, primary_position_group grp, "
                  "ea_id, our_player_id FROM wc2026_squad").df()
 
@@ -68,7 +87,6 @@ def main() -> int:
         JOIN team_match_fbref t ON p.game_id=t.game_id AND p.team=t.team
         LEFT JOIN team_shots ts ON ts.game_id=p.game_id AND ts.team=t.opponent
     """).df()
-    con.close()
 
     dW = dfm.groupby("player_id").apply(lambda x: pd.Series({
         "mins": x["minutes"].sum(),
@@ -112,12 +130,16 @@ def main() -> int:
         ea_pct, emp_pct = df[f"ea_{d}_pct"], df[f"emp_{d}_pct"]
         lam = np.minimum(df[minutes[d]] / SAT, 1.0) * CAP[d]
         lam = lam.where(emp_pct.notna(), 0.0)            # no empirical -> pure prior
+        lam = lam.where(df["grp"].map(lambda g: d in RELEVANT.get(g, set())), 0.0)  # Option A off-role gate
         adj = (1 - lam) * ea_pct + lam * emp_pct
         adj = adj.where(ea_pct.notna(), emp_pct)          # no EA -> empirical only
         df[f"lam_{d}"] = lam
         df[f"adj_{d}"] = adj
         df[f"delta_{d}"] = adj - ea_pct
+    return df
 
+
+def report(df):
     print("CAPs:", CAP, "| SAT", SAT, "min | blend = (1-l)*EA + l*empirical (percentiles)\n")
     for d in DIMS:
         sub = df[df[f"ea_{d}_pct"].notna() & df[f"emp_{d}_pct"].notna()].copy()
@@ -136,6 +158,14 @@ def main() -> int:
     pc = ["name", "grp", "adj_Attack", "adj_Possession", "adj_Defense"]
     s = df[df["name"].str.contains("|".join(stars), na=False)].drop_duplicates("name")
     print(s.to_string(index=False, columns=pc, formatters={c: "{:.0f}".format for c in pc[2:]}))
+
+
+def main() -> int:
+    pd.set_option("display.width", 230)
+    con = duckdb.connect(DB, read_only=True)
+    df = build(con)
+    con.close()
+    report(df)
     return 0
 
 

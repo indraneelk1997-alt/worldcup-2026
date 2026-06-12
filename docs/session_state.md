@@ -3,13 +3,104 @@
 > **Fast-changing.** This is "where we are right now." Updated at the end
 > of each working session. For permanent facts/rules, see `Claude.md`.
 
-**Last updated:** end of S27 (2026-06-12, cont.)
-**Current version line:** **Per-dimension adjusted-rating engine built end-to-end**
-(Attack/Possession/Defense; EA prior blended toward empirical by coverage λ).
-Position groups + EA 6-bucket decomposition + empirical per-90 percentiles +
-blend all working; star profiles validate (De Bruyne Poss 97, Haaland Att 96).
-DB **35 base tables**. Next: fold in StatsBomb stats + clutch + recency (v2),
-persist ratings, then chessboard.
+**Last updated:** end of S28 (2026-06-12)
+**Current version line:** **Blend re-tuned + form→attribute mapping designed &
+prototyped.** Engine now: EA prior blended toward empirical per dimension with
+confidence-CAPs {Attack .60 / Poss .50 / Def .25}, symmetric; off-role dims gated
+to pure EA (Option A); a dimension's form percentile maps DOWN onto its
+discriminator sub-attributes via uniform additive shift (`s = δ/0.75`,
+discriminators only). All prototyped + verified read-only. DB **35 base tables**.
+Next: persist adjusted attributes to a real (non-probe) table, then chessboard;
+StatsBomb stats + clutch + recency still v2.
+
+## S28 outcome — blend re-tune + form→sub-attribute mapping (design + prototype)
+
+Design-led session on top of the S27-cont engine. All read-only; full reasoning
+in **`docs/blend_redesign.md`** (new). Shell-relay throughout (rule 12).
+
+### Decision 1+2 — λ reframed as confidence; CAPs re-tuned (LOCKED)
+- λ's per-dim CAP **reframed** from "minutes ceiling" to **per-dimension
+  confidence** (signal reliability). Blend kept **symmetric** — asymmetry rejected
+  because it bakes in "trust EA about elites" (the bias we calibrate away), and a
+  low CAP already **self-bounds** the max swing to `CAP·100`.
+- CAP **Attack .80→.60 / Possession .80→.50 / Defense .50→.25** (overridable via
+  `CAP_ATT/CAP_POSS/CAP_DEF` env). The ordering *encodes* the data-reliability
+  ranking (Understat xG best → most empirical weight; cups counting-stat proxy
+  worst → least). Van Dijk Defense **69→85** (fair). Side effect: tempers the
+  young-overperformer spikes (Ouedraogo Att 83→67).
+
+### Attribute mapping — discriminators-only uniform shift (LOCKED)
+Chessboard consumes *individual attributes* (verified in `analysis_pipeline_design.md`
+zone-battles), so a dimension's form pct maps down onto sub-attributes:
+`adj_rating_d = invert(adj_pct_d, group EA-rating dist)` → `δ = adj_rating − raw` →
+`s_d = δ/BASE_W` (=δ/0.75) applied **uniformly to the discriminator attrs only**
+(ATTACK/POSSESSION/DEFENSE lists in `_ea_attribute_buckets`); bonus buckets
+(Skills/IQ/**Physical** incl. pace) untouched. Rationale: signal is
+dimension-aggregate (no within-dim info → uniform is the only honest shape); form
+is output not athleticism; base attrs are role-exclusive (no shared-attr conflict).
+`s=δ/0.75` **confirmed by observation** (Van Dijk role −7.3 → s −9.8 → attrs −10;
+the discriminators-only choice amplifies attr move 1.33× vs dim move). No clips hit.
+
+### Off-role gate — Option A (LOCKED, prototype-driven)
+Prototype surfaced the **biggest** shifts on *off-role* dims (CB Attack −13 to
+shot_power from set-piece-noise goals+xa; playmaker Defense −13 from noisy cup
+tackles). CAP is global-per-dim, blind to (dim×group) signal quality. Fix:
+**λ→0 for off-role dims**. `RELEVANT = {DEF:{Poss,Def}, MID:{Att,Poss,Def},
+FWD:{Att,Poss}}` (MID = pivots/box-to-box; CAMs/wingers are FWD). Verified:
+Rüdiger Attack + De Bruyne Defense now `s=+0.0`, attrs untouched; on-role unchanged.
+
+### Grouping audited (maintainer doubt re De Bruyne) — clean
+Watchlist dump of `squad_position_profile` minutes vs assigned group: every
+assignment matches minutes-dominant group. **De Bruyne→FWD correct by his own
+data** (3074 min FWD-coded CAM vs 1055 MID), not just the rule. Only near-coin-
+flips: Bruno Fernandes (FWD 4291/MID 3105) + Bellingham (MID 4044/FWD 3267) — land
+correctly on dominant side; banked **v2 idea: soft/dual group membership** for true
+hybrids (hard buckets judge them vs one peer set only). Not fixed now.
+
+### Files (S28, uncommitted)
+- **New:** `docs/blend_redesign.md`, `src/load/v2_ingest/_probe_adjusted_attributes.py`
+  (the form→attribute mapper; deletable probe).
+- **Modified:** `src/load/v2_ingest/_probe_adjusted_ratings.py` — env-var CAPs +
+  new locked defaults; refactored into `build()`/`report()`/`main()` so other
+  probes reuse the blend (DRY); added `RELEVANT` off-role gate.
+
+### S29 openers
+1. **Persist adjusted attributes to a real (non-probe) table** — promote the
+   mapping out of `_probe_adjusted_attributes.py` into a proper deriver writing
+   per-player adjusted sub-attributes (the chessboard's input). Decide table shape
+   (long `(squad_row_id, attribute, ea_raw, adj)` vs wide) + idempotent rebuild.
+2. Then **chessboard** (stage 2) + Streamlit dashboard.
+3. v2 layer: StatsBomb per-match stats + clutch + recency; soft group membership;
+   cross-source identity unification; tighten `invert_pct` (np.percentile vs
+   pandas-rank convention — small approximation noted in the prototype).
+
+### Owed housekeeping (carried)
+- **Soften "~100% EA baseline"** in `analysis_pipeline_design.md` (measured 815/1247 = 65%).
+- `validate_v104_ingest.py` for UEL/UECL + UCL 25-26.
+- Delete spent probes (S20–27): `_probe_coverage_audit.py`,
+  `_probe_coverage_statsbomb.py`, `_probe_resolver_overlap.py`, the S27 validation
+  probes, etc. (Keep the four permanent S27 files + the two S28 ones for now.)
+
+### S28 commit
+```
+S28: blend re-tune (confidence CAPs) + form->sub-attribute mapping (discriminators, Option A gate)
+
+Reframed lambda as per-dimension confidence; kept the blend symmetric (low CAP
+self-bounds the swing). CAPs Attack .60 / Possession .50 / Defense .25 (encodes
+data-reliability ordering); Van Dijk defence 69->85. Designed + prototyped the
+form->attribute mapping: a dimension's blended percentile maps down onto its EA
+discriminator sub-attributes via a uniform additive shift (s = delta/0.75),
+bonus/Physical/IQ left at EA. Off-role gate (Option A): off-role dims stay pure
+EA prior (DEF no Attack, FWD no Defence). Grouping audited clean.
+
+New:  docs/blend_redesign.md
+      src/load/v2_ingest/_probe_adjusted_attributes.py  (deletable)
+Modified: src/load/v2_ingest/_probe_adjusted_ratings.py (env CAPs + new defaults,
+          refactor build/report/main, RELEVANT off-role gate)
+Updated: docs/session_state.md
+
+Refs: docs/blend_redesign.md, docs/session_state.md
+```
 
 ## S27 outcome — coverage reconciliation + coverage/prior design spine + StatsBomb minutes
 
@@ -127,6 +218,18 @@ engine (Attack/Possession/Defense are outfield only).
   stats can't capture solidity.
 - StatsBomb per-match stats + clutch + recency NOT yet folded in.
 - Cross-source identity unification still deferred.
+
+### S28 openers (maintainer steer, S27 close)
+1. **Re-tune the defense blend — it adjusts too strongly.** Van Dijk 100→69 is
+   too harsh given the empirical defensive signal is the *unreliable* one.
+   Lower λ_def and/or a smarter blend (e.g. resist pulling a high-EA player
+   DOWN when empirical confidence is low; asymmetric / confidence-weighted).
+2. **Design the empirical→EA adjustment framework properly** — how the
+   empirical percentile should move the EA rating **per bucket**
+   (Attack/Possession/Defense each may warrant different strength/shape), and
+   how the three then combine into an **overall** rating. This is the next
+   real design conversation (supersedes the flat per-dimension λ caps).
+3. Then: StatsBomb per-match stats + clutch + recency (v2), persist ratings.
 
 ### Deletable validation probes
 `_probe_position_groups.py`, `_probe_ea_role_ratings.py`,
