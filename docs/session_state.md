@@ -3,13 +3,84 @@
 > **Fast-changing.** This is "where we are right now." Updated at the end
 > of each working session. For permanent facts/rules, see `Claude.md`.
 
-**Last updated:** end of S29 (2026-06-12)
-**Current version line:** **Adjusted attributes PERSISTED.** The S28 form→
-sub-attribute mapping is now a DERIVED table `player_adjusted_attributes` (long,
-**21228 rows / 732 EA-present outfield players**, 29 attrs each) + `_wide` (PIVOT,
-732 rows) — the chessboard's input. Engine `build()` now threads
-squad_row_id/ea_id. DB **37 base tables**. Next: chessboard (stage 2) + Streamlit
-dashboard; dark-player fallback + StatsBomb/clutch/recency still v2.
+**Last updated:** end of S30 (2026-06-12)
+**Current version line:** **Chessboard (stage 2) DESIGNED on paper** — full design
+in `docs/chessboard_design.md` (Decisions 1–7): geometry → team playstyle →
+occupancy/kernels → playstyle transforms → player PlayStyle families → attribute→
+zone relevance, all locked. **Battle resolution (item 8) deliberately deferred** to
+after we load sample data + code items 1–7 (design the math with real numbers in
+hand). No code/DB writes this session (design-only; read-only probes). DB still
+**37 base tables**; `player_adjusted_attributes_wide` (S29) is the chessboard's
+attribute input.
+
+## S30 outcome — chessboard (stage 2) design, end to end (battle math deferred)
+
+Pure brainstorm/design session. Canonical artifact: **`docs/chessboard_design.md`**
+(read it for full detail; summary below). Model: `(formation + team playstyle + 11
+adjusted-attribute vectors)` per team → zone-by-zone battles → team xScoreline →
+sim. Governing rule: parameterised tactical **prior, not a black box**, validated vs
+StatsBomb spatial truth. **Spine** = per-player graded zone occupancy:
+`final tiered zones = BASE(formation) ⊕ SHIFT(team playstyle) ⊕ TWEAK(player playstyle)`.
+
+### Decisions locked (all in chessboard_design.md)
+- **D1 Geometry:** **6 bands × 5 lanes = 30 zones**, reflection-symmetric
+  (orientable per team), xT-valued (collapse Karun-Singh 16×12 onto 30). P2 = 6×4
+  kept as a complexity-ablation fallback. Lanes LW·LH·C·RH·RW; bands B1 own-box →
+  B6 opp-box.
+- **D2 Team playstyle:** 5 continuous axes (directness, width, line height, press,
+  possession) + archetype presets. **Hybrid sourcing** (same shape as EA↔empirical
+  blend): empirical from StatsBomb intl events (pass length, lateral share,
+  def-action height, PPDA, possession%) ⊕ hand prior (mainly the no-data dark set),
+  coverage+recency weighted; coach-turnover caveat.
+- **D3 Base occupancy:** home cell per code on the real 23-code vocab. LCB/RCB home
+  = half-space; CAM central; FB→B3/WB→B4/winger→B5. LM/RM + ST flagged
+  context-dependent (resolved by SHIFT/TWEAK).
+- **D4 Occupancy = role spread kernels + tier semantics:** presence budget = 1.0;
+  each cell weight does double duty (occupancy share × attribute scalar). Occupancy
+  = role kernel (4 dials: fwd/back/lateral reach + spread), normalised; tiers =
+  weight bands (~5–10 cells; box-to-box wide, CB tight). ~6 role templates.
+  **Open-play only**; set-pieces deferred overlay.
+- **D5 Playstyle → kernel transforms:** each role has attack + defence kernels.
+  Possession = phase blend `p·attack+(1−p)·defence`; line = vertical translation
+  (both); width = lateral stretch + wide-player lane bias (resolves LM/RM); press =
+  forward-shift of the **defence kernel only**; directness = mostly battle tempo.
+- **D6 Player PlayStyle families (data-validated):** 36 EA tags → 5 outfield
+  families (Movement=kernel tweak; Finishing/Passing/Dribbling/Defending=attr
+  emphasis) + GK (parked) + Set-piece (deferred). Modal-by-position analysis
+  confirmed family→role attachment. Effects modest; never re-inflate adjusted
+  attribute values.
+- **D7 Attribute→zone relevance:** team-generic matrix, ~6 `(lane-type × band-role)`
+  archetypes → attacking vs defending attribute sets (of the 29). Numeric weights
+  deferred to tuning-on-data. GK interfaces at the box archetype.
+
+### S31 openers — IMPLEMENTATION phase (battle math comes AFTER)
+1. **Load/observe sample data** to ground the build: StatsBomb intl events for D2
+   empirical style metrics + occupancy/touch validation.
+2. **Code items 1–7** incrementally (config-driven, `data/config/` pattern): zone
+   grid + xT collapse; position→home-cell map; role kernels; playstyle-axis
+   transforms; PlayStyle→family map; attribute-relevance matrix.
+3. **THEN design item 8 — battle resolution** (1v1 vs aggregate zone contest →
+   per-zone xThreat → team xG → scoreline; bivariate-Poisson precedent from md38)
+   with real numbers in hand. Then StatsBomb spatial validation; Streamlit.
+4. Carried v2: dark-player attribute fallback; StatsBomb per-match stats + clutch +
+   recency; soft/dual group membership; tighten `invert_pct`.
+
+### S30 commit (design-only; no code/DB)
+```
+S30: chessboard (stage 2) design — geometry, playstyle, occupancy/kernels, relevance
+
+Full stage-2 tactical-model design on paper (docs/chessboard_design.md, D1-D7):
+6x5 xT-valued board; 5-axis team playstyle w/ hybrid StatsBomb+prior sourcing;
+per-player graded occupancy via role spread kernels (budget=1, tier=weight bands);
+playstyle axes as kernel transforms; 36 EA PlayStyles -> 5 data-validated families;
+attribute->zone relevance matrix. Battle resolution (item 8) deferred to after
+loading sample data + coding items 1-7.
+
+New:  docs/chessboard_design.md
+Updated: docs/session_state.md
+
+Refs: docs/chessboard_design.md, docs/analysis_pipeline_design.md, docs/session_state.md
+```
 
 ## S29 outcome — adjusted attributes persisted to a real table
 
