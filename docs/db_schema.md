@@ -1,8 +1,8 @@
 # DuckDB schema reference
 
-_Generated: 2026-06-13T00:06:40_  
+_Generated: 2026-06-13T01:01:39_  
 _DB: `data/processed/worldcup.duckdb`_  
-_Tables: 40_  
+_Tables: 41_  
 
 
 This file is auto-generated. Do not edit by hand. Regenerate with:
@@ -569,6 +569,40 @@ uv run python src/tools/dump_db_schema.py
   ll_vs_baseline = 1.9193207427033485
   calibrated_at = datetime.datetime(2026, 5, 22, 19, 20, 4, 262379)
   notes = 'MLE on B1.2 xG inputs, 2024-25 + 2025-26 played matches. Path Z: post-proces...
+```
+
+### `occupancy_base`
+
+**Rows**: 533
+
+| Column | Type | Nullable | PK |
+|---|---|---|---|
+| `position_code` | `VARCHAR` | NO | ✓ |
+| `phase` | `VARCHAR` | NO | ✓ |
+| `zone_id` | `INTEGER` | NO | ✓ |
+| `band` | `INTEGER` | YES |  |
+| `lane` | `INTEGER` | YES |  |
+| `weight` | `DOUBLE` | YES |  |
+| `tier` | `VARCHAR` | YES |  |
+| `n_events` | `INTEGER` | YES |  |
+| `model_version` | `VARCHAR` | YES |  |
+| `created_at` | `TIMESTAMP` | YES |  |
+
+**Declared foreign keys**: none
+
+**Sample row**:
+
+```
+  position_code = 'CB'
+  phase = 'attack'
+  zone_id = 1
+  band = 0
+  lane = 1
+  weight = 0.04225442421133624
+  tier = 'tertiary'
+  n_events = 9501
+  model_version = 'occupancy_base_v1'
+  created_at = datetime.datetime(2026, 6, 13, 1, 1, 37, 721792)
 ```
 
 ### `player_adjusted_attributes`
@@ -1712,6 +1746,20 @@ uv run python src/tools/dump_db_schema.py
 - `team_match_stats`
 - `team_season_strength_v103` *(PK)*
 
+### `model_version` (11 tables)
+
+- `md38_evaluation_b12_b2` *(PK)*
+- `md38_predictions_b12` *(PK)*
+- `md38_score_grid_b12` *(PK)*
+- `model_parameters_v103` *(PK)*
+- `occupancy_base`
+- `player_adjusted_attributes`
+- `predictions`
+- `team_match_predictions_b12` *(PK)*
+- `team_playstyle_blended`
+- `team_playstyle_empirical`
+- `zone_xt`
+
 ### `league` (10 tables)
 
 - `ea_fc26_player`
@@ -1724,19 +1772,6 @@ uv run python src/tools/dump_db_schema.py
 - `team_match_fbref`
 - `team_match_stats`
 - `team_season_strength_v103`
-
-### `model_version` (10 tables)
-
-- `md38_evaluation_b12_b2` *(PK)*
-- `md38_predictions_b12` *(PK)*
-- `md38_score_grid_b12` *(PK)*
-- `model_parameters_v103` *(PK)*
-- `player_adjusted_attributes`
-- `predictions`
-- `team_match_predictions_b12` *(PK)*
-- `team_playstyle_blended`
-- `team_playstyle_empirical`
-- `zone_xt`
 
 ### `player_id` (10 tables)
 
@@ -1751,10 +1786,11 @@ uv run python src/tools/dump_db_schema.py
 - `statsbomb_event`
 - `statsbomb_player_match`
 
-### `created_at` (8 tables)
+### `created_at` (9 tables)
 
 - `league_averages_v103`
 - `lineup_scenarios`
+- `occupancy_base`
 - `player_adjusted_attributes`
 - `team_match_predictions_b12`
 - `team_playstyle_blended`
@@ -1874,6 +1910,13 @@ uv run python src/tools/dump_db_schema.py
 - `md38_predictions_b12`
 - `statsbomb_match`
 
+### `position_code` (4 tables)
+
+- `formation_slots`
+- `occupancy_base` *(PK)*
+- `player_positions_v103` *(PK)*
+- `positions` *(PK)*
+
 ### `scenario_id` (4 tables)
 
 - `fixture_lineups` *(PK)*
@@ -1962,12 +2005,6 @@ uv run python src/tools/dump_db_schema.py
 - `md38_predictions_b12`
 - `predictions`
 
-### `position_code` (3 tables)
-
-- `formation_slots`
-- `player_positions_v103` *(PK)*
-- `positions` *(PK)*
-
 ### `possession` (3 tables)
 
 - `statsbomb_event`
@@ -2009,6 +2046,11 @@ uv run python src/tools/dump_db_schema.py
 
 - `ea_fc26_player`
 - `player_adjusted_attributes_wide`
+
+### `band` (2 tables)
+
+- `occupancy_base`
+- `zone_xt`
 
 ### `composure` (2 tables)
 
@@ -2069,6 +2111,11 @@ uv run python src/tools/dump_db_schema.py
 
 - `ea_fc26_player`
 - `player_adjusted_attributes_wide`
+
+### `lane` (2 tables)
+
+- `occupancy_base`
+- `zone_xt`
 
 ### `long_passing` (2 tables)
 
@@ -2220,6 +2267,11 @@ uv run python src/tools/dump_db_schema.py
 - `ea_fc26_player`
 - `player_adjusted_attributes_wide`
 
+### `tier` (2 tables)
+
+- `ea_fc26_playstyle`
+- `occupancy_base`
+
 ### `vision` (2 tables)
 
 - `ea_fc26_player`
@@ -2264,3 +2316,8 @@ uv run python src/tools/dump_db_schema.py
 
 - `player_match_fbref`
 - `player_match_stats`
+
+### `zone_id` (2 tables)
+
+- `occupancy_base` *(PK)*
+- `zone_xt` *(PK)*

@@ -81,14 +81,31 @@ Uruguay press 0.862 (Bielsa) — reads like scouting profiles.
   **fan laterally** at assembly (2×ST → B5/B6 × C/half-space corners; 2×DM/CM →
   C/LHS & C/RHS edges). Formation property, kept out of the static map.
 
+### Chessboard item 3 — base occupancy kernels — DONE (S32)
+- `derive_occupancy_base.py` + `data/config/occupancy_events.json` →
+  **`occupancy_base`** (533 rows; DB 40→41). Per `(position_code, phase)` a
+  30-zone occupancy kernel, presence budget 1.0, tiered (home/primary/secondary/
+  tertiary). **Empirical, derived straight from StatsBomb** (NOT hand role
+  templates — those banked as v2 prior): **attack phase = on-ball events,
+  defence phase = defensive actions** — so D5's two-kernel split is *measured*,
+  and the attack→defence shift is role-specific (CB shifts ~4 bands deep+central,
+  ST ~0). Mirror-symmetrised (L↔R exact, `symmetry check 0.0`), set-pieces
+  excluded (open play only), truncated at 3% then renormalised → 6–19 cells/kernel.
+  22 codes (GK separate track). Validated: LCB attack B2-3 LHS vs defence B1-C;
+  LW attack B5-LW vs defence tracks to B2-4; DM symmetric pivot.
+- **Big consequence:** item 4's *empirical leg is already banked* — the two phase
+  kernels exist; item 4 is now just the playstyle *transforms* that warp them.
+
 ### S33 openers
-1. **Code chessboard items 3–7** (opener #3, items 1–2 DONE) — config-driven:
-   **(3) role/occupancy kernels** (next — spread each continuous anchor into
-   graded primary/secondary/tertiary zones over the 30 cells; implement the
-   lateral-fan rule), (4) playstyle-axis→kernel transforms (SHIFT; resolves
-   LM/RM, line height, etc.), (5) PlayStyle→family map, (6) attribute-relevance
-   matrix [+ tier semantics]. Consumes `team_playstyle_blended` +
-   `player_adjusted_attributes_wide` + `zone_xt` + `position_home_cells.json`.
+1. **Code chessboard items 4–7** (opener #3, items 1–3 DONE) — config-driven:
+   **(4) playstyle-axis → kernel transforms** (next — the SHIFT leg, D5: possession
+   = phase blend `p·attack+(1−p)·defence` of `occupancy_base`; line height =
+   vertical translate; width = lateral stretch + wing/half-space bias, resolves
+   LM/RM; press = forward-shift defence kernel; directness mostly battle tempo).
+   Then **(5) PlayStyle→family map**, **(6) attribute-relevance matrix** [+ tier
+   semantics]. Plus the **lateral-fan rule** (N>1 central code) at formation
+   assembly. Consumes `occupancy_base` + `team_playstyle_blended` +
+   `player_adjusted_attributes_wide` + `zone_xt`.
 2. THEN design **item 8 — battle resolution** (carry the S32 transition finding:
    transition/turnover value is a battle-layer term, not in static xT).
 3. v2 banked (D2): per-axis λ_max; τ calibration; leave-one-out confederation

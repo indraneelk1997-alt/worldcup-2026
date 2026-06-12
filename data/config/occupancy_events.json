@@ -1,0 +1,29 @@
+{
+  "_comment": "Chessboard item 3 (S32): config for deriving empirical occupancy kernels from StatsBomb. Per our position_code, pool the listed StatsBomb position(s); split events into ATTACK phase (on-ball ~ where they operate with the ball) and DEFENCE phase (defensive actions ~ where they are without it). Set-pieces excluded (open-play only, D4). Kernels are mirror-symmetrised via mirror_pairs (LCB<->RCB etc.; central codes self-symmetrise). GK is a separate track. See docs/chessboard_design.md item 3.",
+  "set_piece_play_patterns": ["From Corner", "From Free Kick"],
+  "phases": {
+    "attack":  ["Pass", "Carry", "Ball Receipt*", "Dribble", "Shot"],
+    "defence": ["Pressure", "Duel", "Interception", "Block", "Clearance", "Ball Recovery", "Foul Committed"]
+  },
+  "mirror_pairs": {
+    "LCB": "RCB", "LB": "RB", "LWB": "RWB", "LCM": "RCM",
+    "LAM": "RAM", "LM": "RM", "LW": "RW"
+  },
+  "code_sb_positions": {
+    "CB":  ["Center Back"],
+    "DF":  ["Center Back"],
+    "LCB": ["Left Center Back"], "RCB": ["Right Center Back"],
+    "LB":  ["Left Back"], "RB": ["Right Back"],
+    "LWB": ["Left Wing Back"], "RWB": ["Right Wing Back"],
+    "DM":  ["Center Defensive Midfield", "Left Defensive Midfield", "Right Defensive Midfield"],
+    "MF":  ["Center Defensive Midfield", "Left Center Midfield", "Right Center Midfield"],
+    "CM":  ["Left Center Midfield", "Right Center Midfield"],
+    "LCM": ["Left Center Midfield"], "RCM": ["Right Center Midfield"],
+    "LM":  ["Left Midfield"], "RM": ["Right Midfield"],
+    "CAM": ["Center Attacking Midfield"],
+    "LAM": ["Left Attacking Midfield"], "RAM": ["Right Attacking Midfield"],
+    "LW":  ["Left Wing"], "RW": ["Right Wing"],
+    "ST":  ["Center Forward", "Left Center Forward", "Right Center Forward"],
+    "FW":  ["Center Forward"]
+  }
+}
