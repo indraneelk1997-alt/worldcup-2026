@@ -3,15 +3,82 @@
 > **Fast-changing.** This is "where we are right now." Updated at the end
 > of each working session. For permanent facts/rules, see `Claude.md`.
 
-**Last updated:** end of S28 (2026-06-12)
-**Current version line:** **Blend re-tuned + form→attribute mapping designed &
-prototyped.** Engine now: EA prior blended toward empirical per dimension with
-confidence-CAPs {Attack .60 / Poss .50 / Def .25}, symmetric; off-role dims gated
-to pure EA (Option A); a dimension's form percentile maps DOWN onto its
-discriminator sub-attributes via uniform additive shift (`s = δ/0.75`,
-discriminators only). All prototyped + verified read-only. DB **35 base tables**.
-Next: persist adjusted attributes to a real (non-probe) table, then chessboard;
-StatsBomb stats + clutch + recency still v2.
+**Last updated:** end of S29 (2026-06-12)
+**Current version line:** **Adjusted attributes PERSISTED.** The S28 form→
+sub-attribute mapping is now a DERIVED table `player_adjusted_attributes` (long,
+**21228 rows / 732 EA-present outfield players**, 29 attrs each) + `_wide` (PIVOT,
+732 rows) — the chessboard's input. Engine `build()` now threads
+squad_row_id/ea_id. DB **37 base tables**. Next: chessboard (stage 2) + Streamlit
+dashboard; dark-player fallback + StatsBomb/clutch/recency still v2.
+
+## S29 outcome — adjusted attributes persisted to a real table
+
+Build session; design (table shape) was settled first. Shell-relay throughout.
+
+### Decision — long table + materialised wide (LOCKED)
+`player_adjusted_attributes` **long** (grain `(squad_row_id, attribute)`, PK), one
+row per player×attribute with full provenance: `ea_raw, shift_s, adj, adj_pct,
+lambda_dim, bucket, is_discriminator, position_group, model_version, created_at`.
+Chose long for auditability ("why is his finishing 96?" answerable from one row) +
+extensibility; maintainer's standing preference for normalised large data.
+- **`adj` stored CONTINUOUS** (DOUBLE), not rounded to EA ints — round at display.
+- **All 29 attrs stored** (bonus at raw EA, shift_s=0) so the row is self-contained
+  (no re-join to `ea_fc26_player` to reassemble a player).
+- **Wide = materialised TABLE** `player_adjusted_attributes_wide` (PIVOT … USING
+  max(adj)), NOT a view: DuckDB PIVOT has dynamic columns, unreliable in
+  CREATE VIEW; CTAS is safe and rebuilt alongside the long table → no drift.
+
+### Built — `derive_adjusted_attributes.py` (new, PERMANENT)
+Promotes the S28 prototype logic into a DERIVED deriver. `eng.build()` reused
+(invert_pct **inlined** so this permanent file doesn't depend on the deletable
+`_probe_adjusted_attributes.py`). `--apply` = wholesale CREATE OR REPLACE rebuild
+(idempotent; self-contained grain → no FK-block exposure). Dry-run computes + prints,
+writes nothing. **Applied + verified:** 21228 rows / 732 players; numbers match the
+prototype exactly (Van Dijk Def s=−9.76→adj 81.2, Attack s=0 off-role gate; Salah
+Att s=+1.64→fin 95.6, Def s=0; bonus buckets all 0). Wide spot-check: pace/athletic
+carried at raw EA alongside form-adjusted output attrs. `db_schema.md` → 37 tables.
+- **v1 scope:** EA-present players only (`ea_id NOT NULL`); GKs excluded (separate
+  track, dropped in build()); dark-player position-average fallback deferred.
+
+### Plumbing — `_probe_adjusted_ratings.build()` now carries the PK
+`build()` SELECT + rows now include `squad_row_id` + `ea_id` (clean PK joins
+downstream, kills a name_norm fan-out risk). `_probe_adjusted_attributes.py`
+simplified to merge EA attrs straight on build's `ea_id`. (Naming debt noted:
+`_probe_adjusted_ratings.py` is the PERMANENT engine despite the `_probe_` prefix —
+rename someday.)
+
+### S30 openers
+1. **Chessboard (stage 2)** — start `analysis_pipeline_design.md` stage 2: pitch
+   zone grid (xT) + formation→zone occupancy + playstyle modifiers, consuming
+   `player_adjusted_attributes_wide`. Likely a fresh design doc.
+2. Streamlit dashboard (player radars off the wide table + coverage indicator).
+3. v2 carried: dark-player fallback; StatsBomb per-match stats + clutch + recency;
+   soft/dual group membership (Bruno/Bellingham); tighten `invert_pct`
+   (np.percentile vs pandas-rank); cross-source identity unification.
+
+### Owed housekeeping (carried from S28)
+- Soften "~100% EA baseline" in `analysis_pipeline_design.md` (815/1247 = 65%).
+- `validate_v104_ingest.py` for UEL/UECL + UCL 25-26.
+- Delete spent probes (S20–27 list). Keep permanent S27/S28/S29 files.
+
+### S29 commit
+```
+S29: persist adjusted attributes -> player_adjusted_attributes (long) + _wide (pivot)
+
+Promote the S28 form->sub-attribute mapping into a DERIVED table the chessboard
+consumes. Long grain (squad_row_id, attribute) with full provenance (ea_raw,
+shift_s, adj, adj_pct, lambda_dim); adj stored continuous; all 29 attrs/player
+(bonus at raw EA). Wide = materialised PIVOT table (CTAS; view unreliable for
+dynamic PIVOT columns). 21228 rows / 732 EA-present outfield players; verified vs
+prototype. build() now threads squad_row_id/ea_id for clean PK joins.
+
+New:  src/load/v2_ingest/derive_adjusted_attributes.py
+Modified: src/load/v2_ingest/_probe_adjusted_ratings.py (PK threaded through build),
+          src/load/v2_ingest/_probe_adjusted_attributes.py (merge simplified)
+Updated: docs/session_state.md, docs/db_schema.md (37 tables)
+
+Refs: docs/blend_redesign.md, docs/session_state.md
+```
 
 ## S28 outcome — blend re-tune + form→sub-attribute mapping (design + prototype)
 

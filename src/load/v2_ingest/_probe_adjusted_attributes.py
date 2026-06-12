@@ -49,13 +49,11 @@ def invert_pct(group_ratings: pd.Series, pct: float) -> float:
 def main() -> int:
     pd.set_option("display.width", 230)
     con = duckdb.connect(DB, read_only=True)
-    df = eng.build(con)                                   # name(=name_norm), grp, ea_<d>, ea_<d>_pct, adj_<d>
-    sq = con.sql("SELECT name_norm, ea_id FROM wc2026_squad WHERE ea_id IS NOT NULL").df()
+    df = eng.build(con)                                   # squad_row_id, ea_id, name, grp, ea_<d>, ea_<d>_pct, adj_<d>
     ea = con.sql(f"SELECT {', '.join(['ea_id'] + eab.ALL_ATTRS)} FROM ea_fc26_player").df()
     con.close()
 
-    df = (df.merge(sq, left_on="name", right_on="name_norm", how="left")
-            .merge(ea, on="ea_id", how="left"))
+    df = df.merge(ea, on="ea_id", how="left")
 
     # per dimension: invert adj_pct within group -> adjusted role rating -> delta -> s
     for d in DIMS:

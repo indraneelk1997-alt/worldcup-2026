@@ -61,7 +61,7 @@ def build(con):
     """Construct the per-player blended-ratings dataframe (read-only). Returns df
     with ea_<dim>/ea_<dim>_pct/adj_<dim>/lam_<dim> etc. Caller owns the connection
     (so other probes can reuse this without re-deriving the empirical pipeline)."""
-    sq = con.sql("SELECT name_norm, nation_code nat, primary_position_group grp, "
+    sq = con.sql("SELECT squad_row_id, name_norm, nation_code nat, primary_position_group grp, "
                  "ea_id, our_player_id FROM wc2026_squad").df()
 
     ea = eab.add_ratings(con.sql(
@@ -104,6 +104,7 @@ def build(con):
         um = float(u["mins"]) if u is not None else 0.0
         dm = float(d["mins"]) if d is not None else 0.0
         rows.append({
+            "squad_row_id": r.squad_row_id, "ea_id": r.ea_id,
             "name": r.name_norm, "nat": r.nat, "grp": r.grp,
             "ea_Attack": r.ea_Attack, "ea_Possession": r.ea_Possession, "ea_Defense": r.ea_Defense,
             "Attack": ((u["g"] + u["xa"]) / um * 90) if um >= MIN_MINS else np.nan,

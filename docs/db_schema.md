@@ -1,8 +1,8 @@
 # DuckDB schema reference
 
-_Generated: 2026-06-12T15:02:11_  
+_Generated: 2026-06-12T18:08:48_  
 _DB: `data/processed/worldcup.duckdb`_  
-_Tables: 35_  
+_Tables: 37_  
 
 
 This file is auto-generated. Do not edit by hand. Regenerate with:
@@ -569,6 +569,120 @@ uv run python src/tools/dump_db_schema.py
   ll_vs_baseline = 1.9193207427033485
   calibrated_at = datetime.datetime(2026, 5, 22, 19, 20, 4, 262379)
   notes = 'MLE on B1.2 xG inputs, 2024-25 + 2025-26 played matches. Path Z: post-proces...
+```
+
+### `player_adjusted_attributes`
+
+**Rows**: 21,228
+
+| Column | Type | Nullable | PK |
+|---|---|---|---|
+| `squad_row_id` | `BIGINT` | NO | ✓ |
+| `ea_id` | `BIGINT` | YES |  |
+| `position_group` | `VARCHAR` | YES |  |
+| `attribute` | `VARCHAR` | NO | ✓ |
+| `bucket` | `VARCHAR` | YES |  |
+| `is_discriminator` | `BOOLEAN` | YES |  |
+| `ea_raw` | `DOUBLE` | YES |  |
+| `shift_s` | `DOUBLE` | YES |  |
+| `adj` | `DOUBLE` | YES |  |
+| `adj_pct` | `DOUBLE` | YES |  |
+| `lambda_dim` | `DOUBLE` | YES |  |
+| `model_version` | `VARCHAR` | YES |  |
+| `created_at` | `TIMESTAMP` | YES |  |
+
+**Declared foreign keys**: none
+
+**Sample row**:
+
+```
+  squad_row_id = 2
+  ea_id = 255687
+  position_group = 'DEF'
+  attribute = 'finishing'
+  bucket = 'Attack'
+  is_discriminator = True
+  ea_raw = 30.0
+  shift_s = 0.0
+  adj = 30.0
+  adj_pct = None
+  lambda_dim = 0.0
+  model_version = 'adj_attr_v1'
+  created_at = datetime.datetime(2026, 6, 12, 18, 8, 47, 922723)
+```
+
+### `player_adjusted_attributes_wide`
+
+**Rows**: 732
+
+| Column | Type | Nullable | PK |
+|---|---|---|---|
+| `squad_row_id` | `BIGINT` | YES |  |
+| `acceleration` | `DOUBLE` | YES |  |
+| `aggression` | `DOUBLE` | YES |  |
+| `agility` | `DOUBLE` | YES |  |
+| `balance` | `DOUBLE` | YES |  |
+| `ball_control` | `DOUBLE` | YES |  |
+| `composure` | `DOUBLE` | YES |  |
+| `crossing` | `DOUBLE` | YES |  |
+| `curve` | `DOUBLE` | YES |  |
+| `def_awareness` | `DOUBLE` | YES |  |
+| `dribbling` | `DOUBLE` | YES |  |
+| `finishing` | `DOUBLE` | YES |  |
+| `free_kick_accuracy` | `DOUBLE` | YES |  |
+| `heading_accuracy` | `DOUBLE` | YES |  |
+| `interceptions` | `DOUBLE` | YES |  |
+| `jumping` | `DOUBLE` | YES |  |
+| `long_passing` | `DOUBLE` | YES |  |
+| `long_shots` | `DOUBLE` | YES |  |
+| `penalties` | `DOUBLE` | YES |  |
+| `positioning` | `DOUBLE` | YES |  |
+| `reactions` | `DOUBLE` | YES |  |
+| `short_passing` | `DOUBLE` | YES |  |
+| `shot_power` | `DOUBLE` | YES |  |
+| `sliding_tackle` | `DOUBLE` | YES |  |
+| `sprint_speed` | `DOUBLE` | YES |  |
+| `stamina` | `DOUBLE` | YES |  |
+| `standing_tackle` | `DOUBLE` | YES |  |
+| `strength` | `DOUBLE` | YES |  |
+| `vision` | `DOUBLE` | YES |  |
+| `volleys` | `DOUBLE` | YES |  |
+
+**Declared foreign keys**: none
+
+**Sample row**:
+
+```
+  squad_row_id = 2
+  acceleration = 72.0
+  aggression = 70.0
+  agility = 59.0
+  balance = 58.0
+  ball_control = 63.0
+  composure = 73.0
+  crossing = 55.0
+  curve = 51.0
+  def_awareness = 77.0488992083687
+  dribbling = 60.0
+  finishing = 30.0
+  free_kick_accuracy = 32.0
+  heading_accuracy = 67.0
+  interceptions = 75.0488992083687
+  jumping = 80.0
+  long_passing = 61.0
+  long_shots = 35.0
+  penalties = 44.0
+  positioning = 27.0
+  reactions = 73.0
+  short_passing = 64.0
+  shot_power = 61.0
+  sliding_tackle = 73.0488992083687
+  sprint_speed = 80.0
+  stamina = 71.0
+  standing_tackle = 73.0488992083687
+  strength = 78.0
+  vision = 36.0
+  volleys = 33.0
 ```
 
 ### `player_match_fbref`
@@ -1465,6 +1579,16 @@ uv run python src/tools/dump_db_schema.py
 - `statsbomb_event`
 - `statsbomb_player_match`
 
+### `model_version` (7 tables)
+
+- `md38_evaluation_b12_b2` *(PK)*
+- `md38_predictions_b12` *(PK)*
+- `md38_score_grid_b12` *(PK)*
+- `model_parameters_v103` *(PK)*
+- `player_adjusted_attributes`
+- `predictions`
+- `team_match_predictions_b12` *(PK)*
+
 ### `position_class` (7 tables)
 
 - `best_xi`
@@ -1493,14 +1617,13 @@ uv run python src/tools/dump_db_schema.py
 - `squad_position_profile`
 - `statsbomb_player_match`
 
-### `model_version` (6 tables)
+### `created_at` (5 tables)
 
-- `md38_evaluation_b12_b2` *(PK)*
-- `md38_predictions_b12` *(PK)*
-- `md38_score_grid_b12` *(PK)*
-- `model_parameters_v103` *(PK)*
-- `predictions`
-- `team_match_predictions_b12` *(PK)*
+- `league_averages_v103`
+- `lineup_scenarios`
+- `player_adjusted_attributes`
+- `team_match_predictions_b12`
+- `team_season_strength_v103`
 
 ### `fixture_id` (5 tables)
 
@@ -1565,12 +1688,12 @@ uv run python src/tools/dump_db_schema.py
 - `md38_predictions_b12`
 - `statsbomb_match`
 
-### `created_at` (4 tables)
+### `ea_id` (4 tables)
 
-- `league_averages_v103`
-- `lineup_scenarios`
-- `team_match_predictions_b12`
-- `team_season_strength_v103`
+- `ea_fc26_player` *(PK)*
+- `ea_fc26_playstyle` *(PK)*
+- `player_adjusted_attributes`
+- `wc2026_squad`
 
 ### `home_team` (4 tables)
 
@@ -1585,6 +1708,13 @@ uv run python src/tools/dump_db_schema.py
 - `lineup_scenarios` *(PK)*
 - `predictions`
 - `scenario_teams` *(PK)*
+
+### `squad_row_id` (4 tables)
+
+- `player_adjusted_attributes` *(PK)*
+- `player_adjusted_attributes_wide`
+- `squad_position_profile`
+- `wc2026_squad` *(PK)*
 
 ### `assists` (3 tables)
 
@@ -1604,17 +1734,17 @@ uv run python src/tools/dump_db_schema.py
 - `statsbomb_match`
 - `statsbomb_player_match`
 
-### `ea_id` (3 tables)
-
-- `ea_fc26_player` *(PK)*
-- `ea_fc26_playstyle` *(PK)*
-- `wc2026_squad`
-
 ### `ingested_at` (3 tables)
 
 - `ea_fc26_player`
 - `statsbomb_match`
 - `wc2026_squad`
+
+### `interceptions` (3 tables)
+
+- `ea_fc26_player`
+- `player_adjusted_attributes_wide`
+- `player_match_fbref`
 
 ### `match_date` (3 tables)
 
@@ -1670,10 +1800,60 @@ uv run python src/tools/dump_db_schema.py
 - `statsbomb_event`
 - `statsbomb_player_match`
 
+### `acceleration` (2 tables)
+
+- `ea_fc26_player`
+- `player_adjusted_attributes_wide`
+
+### `aggression` (2 tables)
+
+- `ea_fc26_player`
+- `player_adjusted_attributes_wide`
+
+### `agility` (2 tables)
+
+- `ea_fc26_player`
+- `player_adjusted_attributes_wide`
+
 ### `away_goals` (2 tables)
 
 - `games`
 - `md38_score_grid_b12` *(PK)*
+
+### `balance` (2 tables)
+
+- `ea_fc26_player`
+- `player_adjusted_attributes_wide`
+
+### `ball_control` (2 tables)
+
+- `ea_fc26_player`
+- `player_adjusted_attributes_wide`
+
+### `composure` (2 tables)
+
+- `ea_fc26_player`
+- `player_adjusted_attributes_wide`
+
+### `crossing` (2 tables)
+
+- `ea_fc26_player`
+- `player_adjusted_attributes_wide`
+
+### `curve` (2 tables)
+
+- `ea_fc26_player`
+- `player_adjusted_attributes_wide`
+
+### `def_awareness` (2 tables)
+
+- `ea_fc26_player`
+- `player_adjusted_attributes_wide`
+
+### `dribbling` (2 tables)
+
+- `ea_fc26_player`
+- `player_adjusted_attributes_wide`
 
 ### `effective_position` (2 tables)
 
@@ -1685,15 +1865,40 @@ uv run python src/tools/dump_db_schema.py
 - `statsbomb_frame` *(PK)*
 - `statsbomb_frame_meta` *(PK)*
 
+### `finishing` (2 tables)
+
+- `ea_fc26_player`
+- `player_adjusted_attributes_wide`
+
+### `free_kick_accuracy` (2 tables)
+
+- `ea_fc26_player`
+- `player_adjusted_attributes_wide`
+
+### `heading_accuracy` (2 tables)
+
+- `ea_fc26_player`
+- `player_adjusted_attributes_wide`
+
 ### `home_goals` (2 tables)
 
 - `games`
 - `md38_score_grid_b12` *(PK)*
 
-### `interceptions` (2 tables)
+### `jumping` (2 tables)
 
 - `ea_fc26_player`
-- `player_match_fbref`
+- `player_adjusted_attributes_wide`
+
+### `long_passing` (2 tables)
+
+- `ea_fc26_player`
+- `player_adjusted_attributes_wide`
+
+### `long_shots` (2 tables)
+
+- `ea_fc26_player`
+- `player_adjusted_attributes_wide`
 
 ### `matches` (2 tables)
 
@@ -1735,6 +1940,11 @@ uv run python src/tools/dump_db_schema.py
 - `player_match_fbref`
 - `player_match_stats`
 
+### `penalties` (2 tables)
+
+- `ea_fc26_player`
+- `player_adjusted_attributes_wide`
+
 ### `player` (2 tables)
 
 - `statsbomb_event`
@@ -1745,10 +1955,20 @@ uv run python src/tools/dump_db_schema.py
 - `players`
 - `wc2026_squad`
 
+### `position_group` (2 tables)
+
+- `player_adjusted_attributes`
+- `squad_position_profile`
+
 ### `position_id` (2 tables)
 
 - `player_match_fbref`
 - `player_match_stats`
+
+### `positioning` (2 tables)
+
+- `ea_fc26_player`
+- `player_adjusted_attributes_wide`
 
 ### `possession` (2 tables)
 
@@ -1760,6 +1980,11 @@ uv run python src/tools/dump_db_schema.py
 - `player_positions`
 - `player_positions_v103`
 
+### `reactions` (2 tables)
+
+- `ea_fc26_player`
+- `player_adjusted_attributes_wide`
+
 ### `red_cards` (2 tables)
 
 - `player_match_fbref`
@@ -1770,20 +1995,60 @@ uv run python src/tools/dump_db_schema.py
 - `statsbomb_match`
 - `team_match_fbref`
 
+### `short_passing` (2 tables)
+
+- `ea_fc26_player`
+- `player_adjusted_attributes_wide`
+
+### `shot_power` (2 tables)
+
+- `ea_fc26_player`
+- `player_adjusted_attributes_wide`
+
 ### `shots` (2 tables)
 
 - `player_match_fbref`
 - `player_match_stats`
+
+### `sliding_tackle` (2 tables)
+
+- `ea_fc26_player`
+- `player_adjusted_attributes_wide`
 
 ### `source_url` (2 tables)
 
 - `ea_fc26_player`
 - `wc2026_squad`
 
-### `squad_row_id` (2 tables)
+### `sprint_speed` (2 tables)
 
-- `squad_position_profile`
-- `wc2026_squad` *(PK)*
+- `ea_fc26_player`
+- `player_adjusted_attributes_wide`
+
+### `stamina` (2 tables)
+
+- `ea_fc26_player`
+- `player_adjusted_attributes_wide`
+
+### `standing_tackle` (2 tables)
+
+- `ea_fc26_player`
+- `player_adjusted_attributes_wide`
+
+### `strength` (2 tables)
+
+- `ea_fc26_player`
+- `player_adjusted_attributes_wide`
+
+### `vision` (2 tables)
+
+- `ea_fc26_player`
+- `player_adjusted_attributes_wide`
+
+### `volleys` (2 tables)
+
+- `ea_fc26_player`
+- `player_adjusted_attributes_wide`
 
 ### `x` (2 tables)
 
