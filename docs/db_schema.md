@@ -1,8 +1,8 @@
 # DuckDB schema reference
 
-_Generated: 2026-06-12T23:14:15_  
+_Generated: 2026-06-13T00:06:40_  
 _DB: `data/processed/worldcup.duckdb`_  
-_Tables: 39_  
+_Tables: 40_  
 
 
 This file is auto-generated. Do not edit by hand. Regenerate with:
@@ -1631,6 +1631,48 @@ uv run python src/tools/dump_db_schema.py
   primary_position_group = 'GK'
 ```
 
+### `zone_xt`
+
+**Rows**: 30
+
+| Column | Type | Nullable | PK |
+|---|---|---|---|
+| `zone_id` | `INTEGER` | NO | ✓ |
+| `band` | `INTEGER` | YES |  |
+| `lane` | `INTEGER` | YES |  |
+| `band_name` | `VARCHAR` | YES |  |
+| `lane_name` | `VARCHAR` | YES |  |
+| `xt` | `DOUBLE` | YES |  |
+| `s` | `DOUBLE` | YES |  |
+| `g` | `DOUBLE` | YES |  |
+| `m` | `DOUBLE` | YES |  |
+| `n_moves` | `BIGINT` | YES |  |
+| `n_shots` | `BIGINT` | YES |  |
+| `n_turnovers` | `BIGINT` | YES |  |
+| `model_version` | `VARCHAR` | YES |  |
+| `created_at` | `TIMESTAMP` | YES |  |
+
+**Declared foreign keys**: none
+
+**Sample row**:
+
+```
+  zone_id = 0
+  band = 0
+  lane = 0
+  band_name = 'B1_own_def'
+  lane_name = 'LW'
+  xt = 0.0034932585779149177
+  s = 0.0
+  g = 0.0
+  m = 0.7801427016567904
+  n_moves = 6451
+  n_shots = 0
+  n_turnovers = 1818
+  model_version = 'zone_xt_v1'
+  created_at = datetime.datetime(2026, 6, 13, 0, 6, 39, 820125)
+```
+
 ---
 
 ## Column-name graph
@@ -1683,6 +1725,19 @@ uv run python src/tools/dump_db_schema.py
 - `team_match_stats`
 - `team_season_strength_v103`
 
+### `model_version` (10 tables)
+
+- `md38_evaluation_b12_b2` *(PK)*
+- `md38_predictions_b12` *(PK)*
+- `md38_score_grid_b12` *(PK)*
+- `model_parameters_v103` *(PK)*
+- `player_adjusted_attributes`
+- `predictions`
+- `team_match_predictions_b12` *(PK)*
+- `team_playstyle_blended`
+- `team_playstyle_empirical`
+- `zone_xt`
+
 ### `player_id` (10 tables)
 
 - `best_xi`
@@ -1696,19 +1751,7 @@ uv run python src/tools/dump_db_schema.py
 - `statsbomb_event`
 - `statsbomb_player_match`
 
-### `model_version` (9 tables)
-
-- `md38_evaluation_b12_b2` *(PK)*
-- `md38_predictions_b12` *(PK)*
-- `md38_score_grid_b12` *(PK)*
-- `model_parameters_v103` *(PK)*
-- `player_adjusted_attributes`
-- `predictions`
-- `team_match_predictions_b12` *(PK)*
-- `team_playstyle_blended`
-- `team_playstyle_empirical`
-
-### `created_at` (7 tables)
+### `created_at` (8 tables)
 
 - `league_averages_v103`
 - `lineup_scenarios`
@@ -1717,6 +1760,7 @@ uv run python src/tools/dump_db_schema.py
 - `team_playstyle_blended`
 - `team_playstyle_empirical`
 - `team_season_strength_v103`
+- `zone_xt`
 
 ### `position_class` (7 tables)
 

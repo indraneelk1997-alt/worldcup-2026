@@ -36,6 +36,90 @@ Open knobs flagged **[OPEN]**; everything else agreed.
   ablation / comparison. Build P1; keep P2 as a coarser variant to fall back to or
   benchmark against if 30 cells prove unwieldy in practice.
 
+### Item 1 implementation — zone grid + xT value (LOCKED S32)
+
+**Geometry as config** (`data/config/zone_grid.json`), on the StatsBomb 120×80
+pitch, in attack-orientation (StatsBomb normalises the acting team to +x — no
+half-time flip, confirmed S31; the opponent overlay reflects the board, D1's
+orientability):
+- **6 bands** = equal sixths of x: edges `[0,20,40,60,80,100,120]`, B1 own-defensive
+  → B6 opp-box (B6 `x≥100` ≈ penalty area). *Banked tunable:* align bands to the
+  18-yard line instead of equal sixths if validation wants it.
+- **5 lanes** = y edges `[18,30,50,62]` → LW · LHS · C · RHS · RW. Wing bounds
+  **reuse the S31 width-metric channels** (`y≤18 / y≥62`) for consistency.
+- `zone_id = band*5 + lane`, 0–29.
+
+**xT source = empirical, estimated natively at our 30 zones** from the StatsBomb
+intl events (NOT collapsed from Karun's 16×12 — that's English club football, and
+the transition structure of international tournament play is precisely the signal
+we want). Markov xT: `xT(z) = s(z)·g(z) + m(z)·Σ T(z→z')·xT(z')`, solved by value
+iteration. Estimated from 313,731 completed pass+carry moves (transition `T`) +
+shots/goals per zone (`s`,`g`). **Karun's published surface = a shrinkage prior**
+for sparse cells only (https://karun.in/blog/expected-threat.html).
+
+*Viability verified S32 (`_probe`, read-only):* per-origin-zone outflow min 1,382
+/ median 11,060 (every zone estimable); 900-cell matrix legitimately sparse
+(719 nonzero — balls move locally, ~15 real dest-edges/zone), not a data gap;
+shots/goals concentrate B5–B6 (1,453/3,379 shots, 2.5%→16% finishing) as xT needs.
+
+**Zone-value contract (the item-8 interface that fixed this choice):** a zone's
+value is in **goal-probability units**, so the battle layer can compute
+`zone contribution ≈ control × xT(zone) × usage` and sum to team xG. Decomposed
+empirical inputs, kept at their proper grain: *transition* → inside xT (team-
+international events); *team zone-usage* → team layer (touch/pass density per
+zone); *player chain* (xGChain/xGBuildup/xA, club per-player) → player-weighting
+leg ONLY — never mixed into team flow (grain discipline, per D2).
+
+### Finding for item 8 — transition/turnover value (S32, `_probe_goal_traceback.py`)
+
+Tracing all open-play goals back through the StatsBomb event stream surfaced a
+result that shapes the battle layer (NOT item 1): **225/404 = 56% of open-play
+goals are sparked by a turnover** — the scoring team *won* the ball to start the
+possession. The regain/spark zones are **anti-correlated with the clean-possession
+xT surface** (Spearman ≈ −0.61): 62% of regains sit in wide + half-space lanes,
+plus a deep-central cluster (win-it-deep-and-counter).
+
+Implication: clean-possession Markov xT (item 1) **structurally cannot** value
+transition danger — and it shouldn't try to. The static xT surface stays the
+"value of a controlled ball at z" weight. **Transition/turnover value belongs in
+the battle layer (item 8):** a contested ball or turnover in an advanced
+wide/half-space zone carries danger for *both* teams, so zone resolution should
+carry a recovery/transition term (recovery-credited, or a two-team value where the
+ball can flip), not only sustained-possession control. This is why the wide/half-
+space "chaos" zones matter even though their clean xT is low. **Bank for item-8
+design.** (Probe caveat: its raw-stream grid still has a residual coordinate-frame
+bug — the L/R flip must key on the acting `team`, not `possession_team`; the regain
+grid + 56% headline are clean (scorer-frame), the raw last-5 grid is not. Probe is
+deletable; the finding is banked here.)
+
+### Item 2 implementation — position → home anchor (LOCKED S32)
+
+Canonical vocab = the **`positions` table** (23 `position_code`s + `position_class`
++ `flank`), which `formation_slots` deploys; StatsBomb's 23 positions map ~1:1
+for validation. Config: `data/config/position_home_cells.json`.
+
+**Home is a CONTINUOUS anchor `(band_pos, lane_pos)`, not a discrete cell.**
+Integers = cell centres; **half-values = the edge between two cells**. This
+unifies point / edge / vertex homes into one primitive and is the centre the
+item-3 kernel spreads from. `band_pos∈[0,5]` (B1→B6), `lane_pos∈[0,4]`
+(LW·LHS·C·RHS·RW). Lane side from `flank`, with the key nuance: **central
+defenders/mids carrying an L/R flank (LCB/RCB, LCM/RCM, LAM/RAM) sit in the
+HALF-SPACES**; wide defenders/wingers/wide-mids (LB/RB, LWB/RWB, LW/RW, LM/RM)
+in the WING lanes. Clean central spine GK(0)→CB(1)→DM(2)→CM(3)→CAM(3.5)→ST(4.5).
+Edge anchors (S32 design w/ maintainer): **ST/FW = B5/B6 edge** (band 4.5 —
+offside-realistic, not camped in the box), **CAM = B4/B5 edge** (3.5, drops
+between lines), **LWB/RWB = B3/B4 edge** (2.5). LM/RM flagged playstyle-sensitive
+(wing vs advanced vs half-space) — resolved by SHIFT in item 4.
+
+### Item 3 rule banked — multiplicity lateral fan
+
+A code's anchor is identical regardless of how many are fielded. When a formation
+deploys **N>1 slots of the same central code** (e.g. 4-2-3-1 has two `DM`; a
+two-`ST` or two-`CM` system), item 3 **fans them laterally** around the anchor's
+`lane_pos` at assembly time (two `ST` → `(4.5, 1.5)` & `(4.5, 2.5)`, i.e. the
+B5/B6 × C/half-space corners; two `DM`/`CM` → the C/LHS & C/RHS edges). This is a
+formation-assembly property, kept OUT of the static item-2 map.
+
 ## Complexity-management principle (LOCKED S30) — the answer to "30 cells is a lot"
 
 The maintainer's real concern: hand-built tactical models die of complexity. Three

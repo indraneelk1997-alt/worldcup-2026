@@ -1,0 +1,33 @@
+{
+  "_comment": "Chessboard item 2 (S32, docs/chessboard_design.md): per position_code BASE home ANCHOR on the 30-zone board (data/config/zone_grid.json), neutral playstyle. The anchor is a CONTINUOUS point — item 3's occupancy kernel spreads it into graded primary/secondary/tertiary zones. Keyed on positions.position_code (23 codes); StatsBomb positions map ~1:1 for validation. Lane side comes from positions.flank; central defenders/mids carrying an L/R flank sit in HALF-SPACES, wide defenders/wingers/wide-mids in WING lanes.",
+  "_convention": "band_pos in [0,5]: 0=B1 own-goal ... 5=B6 opp-box; a .5 value = the edge BETWEEN two bands. lane_pos in [0,4]: 0=LW, 1=LHS, 2=C, 3=RHS, 4=RW; a .5 value = the edge between two lanes. Integer = cell centre. nearest cell_id = round(band_pos)*5 + round(lane_pos).",
+  "_multiplicity_note": "When a formation fields N>1 slots of the SAME central code (e.g. 4-2-3-1 has two 'DM'; a two-'ST' or two-'CM' system), they are fanned LATERALLY around the anchor's lane_pos at ASSEMBLY time. That is a formation rule and lives in item 3 (occupancy build), NOT in this static map — a code's anchor is identical regardless of how many are played.",
+  "anchors": {
+    "GK":  { "band_pos": 0.0, "lane_pos": 2.0, "class": "GK",  "note": "own goal, central" },
+
+    "LCB": { "band_pos": 1.0, "lane_pos": 1.0, "class": "DEF", "note": "back line, left half-space" },
+    "CB":  { "band_pos": 1.0, "lane_pos": 2.0, "class": "DEF", "note": "back line, central" },
+    "DF":  { "band_pos": 1.0, "lane_pos": 2.0, "class": "DEF", "note": "generic defender fallback, central" },
+    "RCB": { "band_pos": 1.0, "lane_pos": 3.0, "class": "DEF", "note": "back line, right half-space" },
+    "LB":  { "band_pos": 2.0, "lane_pos": 0.0, "class": "DEF", "note": "full-back, left wing" },
+    "RB":  { "band_pos": 2.0, "lane_pos": 4.0, "class": "DEF", "note": "full-back, right wing" },
+    "LWB": { "band_pos": 2.5, "lane_pos": 0.0, "class": "DEF", "note": "wing-back, B3/B4 edge, left wing" },
+    "RWB": { "band_pos": 2.5, "lane_pos": 4.0, "class": "DEF", "note": "wing-back, B3/B4 edge, right wing" },
+
+    "DM":  { "band_pos": 2.0, "lane_pos": 2.0, "class": "MID", "note": "screen in front of back line, central" },
+    "MF":  { "band_pos": 3.0, "lane_pos": 2.0, "class": "MID", "note": "generic midfielder fallback, central" },
+    "CM":  { "band_pos": 3.0, "lane_pos": 2.0, "class": "MID", "note": "central midfield" },
+    "LCM": { "band_pos": 3.0, "lane_pos": 1.0, "class": "MID", "note": "left half-space midfield" },
+    "RCM": { "band_pos": 3.0, "lane_pos": 3.0, "class": "MID", "note": "right half-space midfield" },
+    "LM":  { "band_pos": 3.0, "lane_pos": 0.0, "class": "MID", "note": "wide midfield, left wing (playstyle-sensitive)" },
+    "RM":  { "band_pos": 3.0, "lane_pos": 4.0, "class": "MID", "note": "wide midfield, right wing (playstyle-sensitive)" },
+    "CAM": { "band_pos": 3.5, "lane_pos": 2.0, "class": "MID", "note": "between lines, B4/B5 edge central" },
+    "LAM": { "band_pos": 4.0, "lane_pos": 1.0, "class": "MID", "note": "advanced, left half-space" },
+    "RAM": { "band_pos": 4.0, "lane_pos": 3.0, "class": "MID", "note": "advanced, right half-space" },
+
+    "LW":  { "band_pos": 4.0, "lane_pos": 0.0, "class": "FWD", "note": "winger, left wing" },
+    "RW":  { "band_pos": 4.0, "lane_pos": 4.0, "class": "FWD", "note": "winger, right wing" },
+    "ST":  { "band_pos": 4.5, "lane_pos": 2.0, "class": "FWD", "note": "B5/B6 edge central (offside-realistic, not camped in box)" },
+    "FW":  { "band_pos": 4.5, "lane_pos": 2.0, "class": "FWD", "note": "generic forward fallback, B5/B6 edge central" }
+  }
+}

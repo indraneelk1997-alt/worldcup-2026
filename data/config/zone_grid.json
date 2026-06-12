@@ -1,0 +1,14 @@
+{
+  "_comment": "Chessboard zone geometry (item 1, LOCKED S32; docs/chessboard_design.md). 6 bands x 5 lanes = 30 zones on the StatsBomb 120x80 pitch, in ATTACK-orientation (StatsBomb normalises the acting team to +x; no half-time flip, confirmed S31). zone_id = band*5 + lane (0-29). Consumed by the xT deriver and all occupancy/battle layers. Boundaries are tunable: band edges could align to the 18-yard line instead of equal sixths (banked).",
+  "pitch": { "x_max": 120.0, "y_max": 80.0 },
+  "bands": {
+    "_comment": "x edges, low x = own defensive third, high x = opponent box. 6 equal sixths.",
+    "edges": [0, 20, 40, 60, 80, 100, 120],
+    "names": ["B1_own_def", "B2", "B3", "B4", "B5", "B6_opp_box"]
+  },
+  "lanes": {
+    "_comment": "y edges (4 internal cut points -> 5 lanes). Wing bounds reuse the S31 width-metric channels (y<=18 / y>=62) for consistency. LHS/RHS = half-spaces, C = central spine.",
+    "edges": [18, 30, 50, 62],
+    "names": ["LW", "LHS", "C", "RHS", "RW"]
+  }
+}

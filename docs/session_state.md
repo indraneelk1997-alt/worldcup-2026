@@ -54,13 +54,43 @@ Uruguay press 0.862 (Bielsa) — reads like scouting profiles.
   `src/load/v2_ingest/_probe_blend_sweep.py` (**deletable**).
 - Updated: `docs/db_schema.md` (39 tables), `docs/session_state.md`.
 
+### Chessboard item 1 — zone grid + xT — DONE (S32)
+- `data/config/zone_grid.json`: 6 bands × 5 lanes = 30 zones, 120×80 pitch,
+  attack-orientation. `derive_zone_xt.py` → `zone_xt` (30 rows; DB 39→40).
+- **Empirical Markov xT** estimated natively from StatsBomb intl events (NOT
+  Karun-collapsed; viability verified — per-origin outflow min 1,382). Turnover
+  absorbing state is **load-bearing** (without it m≈1, no contraction, flat
+  surface — caught + fixed S32). **L/R reflection-symmetric by construction**
+  (reflection augmentation; default on, `--asymmetric` to compare) — the value
+  matrix is symmetric *a priori*, removing footedness/small-sample/skilled-player
+  asymmetry. Surface: peak B6-C 0.143, monotonic toward goal. Tiny banked cleanup:
+  value iteration hits the 100-iter cap (slow geom rate, stable to <1e-4) — report
+  residual + raise default iters next touch.
+- **Item-8 finding banked** (`docs/chessboard_design.md`): 56% of open-play goals
+  are turnover-sparked; regain zones anti-correlated (−0.61) with clean xT →
+  transition value belongs in the battle layer, not the static surface.
+
+### Chessboard item 2 — position → home anchor — DONE (S32)
+- `data/config/position_home_cells.json`: 23 `position_code`s → **continuous home
+  anchor `(band_pos, lane_pos)`** (integers = cell centre, **.5 = edge**), keyed on
+  the `positions` table (vocab verified 23/23). Lane from `flank`; central
+  flanked codes (LCB/RCB, LCM/RCM, LAM/RAM) → half-spaces, wide codes → wings.
+  Clean spine GK→CB→DM→CM→CAM→ST. Edge anchors: ST/FW B5/B6 (4.5), CAM B4/B5
+  (3.5), LWB/RWB B3/B4 (2.5).
+- **Item-3 rule banked** (`chessboard_design.md`): N>1 of a central code →
+  **fan laterally** at assembly (2×ST → B5/B6 × C/half-space corners; 2×DM/CM →
+  C/LHS & C/RHS edges). Formation property, kept out of the static map.
+
 ### S33 openers
-1. **Code chessboard items 1–7** (opener #3, STARTED S32) — config-driven,
-   `data/config/` pattern: (1) zone grid + xT collapse, (2) position→home-cell
-   map, (3) role kernels, (4) playstyle-axis→kernel transforms, (5) PlayStyle→
-   family map, (6) attribute-relevance matrix [+ tier semantics]. Consumes
-   `team_playstyle_blended` + `player_adjusted_attributes_wide`.
-2. THEN design **item 8 — battle resolution**.
+1. **Code chessboard items 3–7** (opener #3, items 1–2 DONE) — config-driven:
+   **(3) role/occupancy kernels** (next — spread each continuous anchor into
+   graded primary/secondary/tertiary zones over the 30 cells; implement the
+   lateral-fan rule), (4) playstyle-axis→kernel transforms (SHIFT; resolves
+   LM/RM, line height, etc.), (5) PlayStyle→family map, (6) attribute-relevance
+   matrix [+ tier semantics]. Consumes `team_playstyle_blended` +
+   `player_adjusted_attributes_wide` + `zone_xt` + `position_home_cells.json`.
+2. THEN design **item 8 — battle resolution** (carry the S32 transition finding:
+   transition/turnover value is a battle-layer term, not in static xT).
 3. v2 banked (D2): per-axis λ_max; τ calibration; leave-one-out confederation
    prior; non-qualifier-as-proxy hand priors; externalise blend tunables to a
    `d2_blend_params.json`; coach-continuity as graded not binary.
