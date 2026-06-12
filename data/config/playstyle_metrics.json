@@ -1,0 +1,28 @@
+{
+  "_doc": "Tunables for derive_team_playstyle_empirical.py. See docs/playstyle_empirical_design.md. Coordinates: StatsBomb normalised, each team attacks +x, own goal x=0, pitch 120x80.",
+  "model_version": "playstyle_empirical_v1",
+  "tournaments": [
+    { "name": "World Cup 2022",   "competition_id": 43,   "season_id": 106 },
+    { "name": "Euro 2024",        "competition_id": 55,   "season_id": 282 },
+    { "name": "AFCON 2023",       "competition_id": 1267, "season_id": 107 },
+    { "name": "Copa America 2024","competition_id": 223,  "season_id": 282 }
+  ],
+  "ppda_zone": {
+    "_doc": "def_action_min_x = pressing team's attacking 60% (>=48 = outside own 40%); opp_pass_max_x = building team's own 60% (<=72). Same physical strip.",
+    "def_action_min_x": 48.0,
+    "opp_pass_max_x": 72.0
+  },
+  "wing_channels": {
+    "_doc": "Wide lanes on the 80-wide pitch (outer ~22% each side). attacking_half_min_x restricts to attacking width (x>=60) so central buildup doesn't dilute the signal; half not third, since wide players receive near halfway.",
+    "left_max_y": 18.0,
+    "right_min_y": 62.0,
+    "attacking_half_min_x": 60.0
+  },
+  "line_height": {
+    "_doc": "Median x of BACK-LINE players' defensive engagements. Excludes Clearance/Block (deep last-ditch) and DM/GK.",
+    "engagement_types": ["Pressure", "Ball Recovery", "Duel", "Interception", "Dribbled Past", "50/50"],
+    "back_line_position_substr": "Back"
+  },
+  "ppda_def_action_types": ["Interception", "Foul Committed", "Block", "Dribbled Past"],
+  "_ppda_note": "Tackles come from type='Duel' AND raw.duel.type.name='Tackle' (Duel is ~50% aerials). Pressure/Ball Recovery deliberately excluded from PPDA."
+}

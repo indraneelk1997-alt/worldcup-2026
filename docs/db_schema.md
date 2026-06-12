@@ -1,8 +1,8 @@
 # DuckDB schema reference
 
-_Generated: 2026-06-12T18:08:48_  
+_Generated: 2026-06-12T22:21:19_  
 _DB: `data/processed/worldcup.duckdb`_  
-_Tables: 37_  
+_Tables: 38_  
 
 
 This file is auto-generated. Do not edit by hand. Regenerate with:
@@ -1427,6 +1427,58 @@ uv run python src/tools/dump_db_schema.py
   league = 'ENG-Premier League'
 ```
 
+### `team_playstyle_empirical`
+
+**Rows**: 96
+
+| Column | Type | Nullable | PK |
+|---|---|---|---|
+| `competition_id` | `INTEGER` | YES |  |
+| `season_id` | `INTEGER` | YES |  |
+| `team_id` | `INTEGER` | YES |  |
+| `team` | `VARCHAR` | YES |  |
+| `n_matches` | `BIGINT` | YES |  |
+| `pass_dist_med_raw` | `DOUBLE` | YES |  |
+| `fwd_share_raw` | `DOUBLE` | YES |  |
+| `width_raw` | `DOUBLE` | YES |  |
+| `line_height_raw` | `DOUBLE` | YES |  |
+| `line_height_n` | `BIGINT` | YES |  |
+| `ppda_raw` | `DOUBLE` | YES |  |
+| `possession_raw` | `DOUBLE` | YES |  |
+| `directness_norm` | `DOUBLE` | YES |  |
+| `width_norm` | `DOUBLE` | YES |  |
+| `line_height_norm` | `DOUBLE` | YES |  |
+| `ppda_norm` | `DOUBLE` | YES |  |
+| `possession_norm` | `DOUBLE` | YES |  |
+| `model_version` | `VARCHAR` | YES |  |
+| `created_at` | `TIMESTAMP` | YES |  |
+
+**Declared foreign keys**: none
+
+**Sample row**:
+
+```
+  competition_id = 43
+  season_id = 106
+  team_id = 779
+  team = 'Argentina'
+  n_matches = 7
+  pass_dist_med_raw = 16.224980739587952
+  fwd_share_raw = 0.5837486457204767
+  width_raw = 0.5097842448569995
+  line_height_raw = 40.5
+  line_height_n = 611
+  ppda_raw = 8.795833333333333
+  possession_raw = 0.5748629795714998
+  directness_norm = 0.109375
+  width_norm = 0.09375
+  line_height_norm = 0.6614583333333334
+  ppda_norm = 0.5208333333333334
+  possession_norm = 0.8645833333333334
+  model_version = 'playstyle_empirical_v1'
+  created_at = datetime.datetime(2026, 6, 12, 20, 21, 18, 945962)
+```
+
 ### `team_season_strength_v103`
 
 **Rows**: 40
@@ -1521,6 +1573,23 @@ uv run python src/tools/dump_db_schema.py
 
 > These column names appear in 2+ tables. Some are real FK relationships (declared or NOT — `duckdb_constraints()` is known to miss some, see S14 carry-forward). Some are dimensional values that happen to share names (e.g. `season`, `model_version`). Inspect manually.
 
+### `team` (14 tables)
+
+- `best_xi` *(PK)*
+- `player_match_fbref`
+- `player_match_stats`
+- `player_positions` *(PK)*
+- `player_positions_v103` *(PK)*
+- `player_season_stats` *(PK)*
+- `scenario_teams`
+- `statsbomb_event`
+- `statsbomb_player_match`
+- `team_match_fbref` *(PK)*
+- `team_match_predictions_b12` *(PK)*
+- `team_match_stats` *(PK)*
+- `team_playstyle_empirical`
+- `team_season_strength_v103` *(PK)*
+
 ### `season` (13 tables)
 
 - `best_xi` *(PK)*
@@ -1535,22 +1604,6 @@ uv run python src/tools/dump_db_schema.py
 - `team_match_fbref`
 - `team_match_predictions_b12`
 - `team_match_stats`
-- `team_season_strength_v103` *(PK)*
-
-### `team` (13 tables)
-
-- `best_xi` *(PK)*
-- `player_match_fbref`
-- `player_match_stats`
-- `player_positions` *(PK)*
-- `player_positions_v103` *(PK)*
-- `player_season_stats` *(PK)*
-- `scenario_teams`
-- `statsbomb_event`
-- `statsbomb_player_match`
-- `team_match_fbref` *(PK)*
-- `team_match_predictions_b12` *(PK)*
-- `team_match_stats` *(PK)*
 - `team_season_strength_v103` *(PK)*
 
 ### `league` (10 tables)
@@ -1579,7 +1632,7 @@ uv run python src/tools/dump_db_schema.py
 - `statsbomb_event`
 - `statsbomb_player_match`
 
-### `model_version` (7 tables)
+### `model_version` (8 tables)
 
 - `md38_evaluation_b12_b2` *(PK)*
 - `md38_predictions_b12` *(PK)*
@@ -1588,6 +1641,7 @@ uv run python src/tools/dump_db_schema.py
 - `player_adjusted_attributes`
 - `predictions`
 - `team_match_predictions_b12` *(PK)*
+- `team_playstyle_empirical`
 
 ### `position_class` (7 tables)
 
@@ -1598,6 +1652,15 @@ uv run python src/tools/dump_db_schema.py
 - `player_season_stats`
 - `positions`
 - `wc2026_squad`
+
+### `created_at` (6 tables)
+
+- `league_averages_v103`
+- `lineup_scenarios`
+- `player_adjusted_attributes`
+- `team_match_predictions_b12`
+- `team_playstyle_empirical`
+- `team_season_strength_v103`
 
 ### `game_id` (6 tables)
 
@@ -1616,14 +1679,6 @@ uv run python src/tools/dump_db_schema.py
 - `player_season_stats`
 - `squad_position_profile`
 - `statsbomb_player_match`
-
-### `created_at` (5 tables)
-
-- `league_averages_v103`
-- `lineup_scenarios`
-- `player_adjusted_attributes`
-- `team_match_predictions_b12`
-- `team_season_strength_v103`
 
 ### `fixture_id` (5 tables)
 
@@ -1688,6 +1743,13 @@ uv run python src/tools/dump_db_schema.py
 - `md38_predictions_b12`
 - `statsbomb_match`
 
+### `competition_id` (4 tables)
+
+- `statsbomb_event`
+- `statsbomb_match`
+- `statsbomb_player_match`
+- `team_playstyle_empirical`
+
 ### `ea_id` (4 tables)
 
 - `ea_fc26_player` *(PK)*
@@ -1709,12 +1771,26 @@ uv run python src/tools/dump_db_schema.py
 - `predictions`
 - `scenario_teams` *(PK)*
 
+### `season_id` (4 tables)
+
+- `statsbomb_event`
+- `statsbomb_match`
+- `statsbomb_player_match`
+- `team_playstyle_empirical`
+
 ### `squad_row_id` (4 tables)
 
 - `player_adjusted_attributes` *(PK)*
 - `player_adjusted_attributes_wide`
 - `squad_position_profile`
 - `wc2026_squad` *(PK)*
+
+### `team_id` (4 tables)
+
+- `player_season_stats`
+- `statsbomb_event`
+- `statsbomb_player_match`
+- `team_playstyle_empirical`
 
 ### `assists` (3 tables)
 
@@ -1727,12 +1803,6 @@ uv run python src/tools/dump_db_schema.py
 - `club_elo` *(PK)*
 - `ea_fc26_player`
 - `wc2026_squad`
-
-### `competition_id` (3 tables)
-
-- `statsbomb_event`
-- `statsbomb_match`
-- `statsbomb_player_match`
 
 ### `ingested_at` (3 tables)
 
@@ -1751,6 +1821,12 @@ uv run python src/tools/dump_db_schema.py
 - `fixtures`
 - `games`
 - `statsbomb_match`
+
+### `n_matches` (3 tables)
+
+- `player_positions_v103`
+- `team_playstyle_empirical`
+- `team_season_strength_v103`
 
 ### `opponent` (3 tables)
 
@@ -1782,23 +1858,11 @@ uv run python src/tools/dump_db_schema.py
 - `player_positions_v103` *(PK)*
 - `positions` *(PK)*
 
-### `season_id` (3 tables)
-
-- `statsbomb_event`
-- `statsbomb_match`
-- `statsbomb_player_match`
-
 ### `slot_no` (3 tables)
 
 - `best_xi` *(PK)*
 - `fixture_lineups` *(PK)*
 - `formation_slots` *(PK)*
-
-### `team_id` (3 tables)
-
-- `player_season_stats`
-- `statsbomb_event`
-- `statsbomb_player_match`
 
 ### `acceleration` (2 tables)
 
@@ -1904,11 +1968,6 @@ uv run python src/tools/dump_db_schema.py
 
 - `player_season_stats`
 - `squad_position_profile`
-
-### `n_matches` (2 tables)
-
-- `player_positions_v103`
-- `team_season_strength_v103`
 
 ### `name_norm` (2 tables)
 

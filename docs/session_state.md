@@ -3,15 +3,103 @@
 > **Fast-changing.** This is "where we are right now." Updated at the end
 > of each working session. For permanent facts/rules, see `Claude.md`.
 
-**Last updated:** end of S30 (2026-06-12)
-**Current version line:** **Chessboard (stage 2) DESIGNED on paper** — full design
-in `docs/chessboard_design.md` (Decisions 1–7): geometry → team playstyle →
-occupancy/kernels → playstyle transforms → player PlayStyle families → attribute→
-zone relevance, all locked. **Battle resolution (item 8) deliberately deferred** to
-after we load sample data + code items 1–7 (design the math with real numbers in
-hand). No code/DB writes this session (design-only; read-only probes). DB still
-**37 base tables**; `player_adjusted_attributes_wide` (S29) is the chessboard's
-attribute input.
+**Last updated:** end of S31 (2026-06-12)
+**Current version line:** **Chessboard IMPLEMENTATION started — D2 empirical
+playstyle leg DONE.** `team_playstyle_empirical` built + applied: 96
+team-tournament rows from the 4 StatsBomb intl tournaments, 5 percentile-normalised
+axes. DB now **38 base tables**. Chessboard design (D1–D7) locked S30 in
+`docs/chessboard_design.md`; **battle resolution (item 8) still deferred**.
+`player_adjusted_attributes_wide` (S29) remains the attribute input. Next:
+StatsBomb-team→2026-nation map, then the D2 **prior leg + blend**, then code
+chessboard items 1–7.
+
+## S31 outcome — team-playstyle EMPIRICAL leg built (D2 implementation begins)
+
+First implementation-phase session after the S30 chessboard design. Built the
+empirical leg of **D2 team playstyle** from StatsBomb events. Shell-relay
+throughout (rule 12). Full design + citations: **`docs/playstyle_empirical_design.md`**
+(new).
+
+### Built — `derive_team_playstyle_empirical.py` + `data/config/playstyle_metrics.json`
+DERIVED table **`team_playstyle_empirical`** (NEW → DB **38 tables**): one row per
+`(team, competition_id, season_id)` = **96 team-tournament rows** across the 4 SB
+intl tournaments (WC22 32 / Euro24 24 / Copa24 16 / AFCON23 24). Five axes, each
+stored **raw + percentile-rank normalised** across the 96-row pool (1 = high end).
+Config-driven (tunables in JSON: tournaments, zone lines, channel bounds, action
+sets). `--apply` = CTAS wholesale rebuild; self-contained on SB IDs → no FK
+exposure. Applied + verified.
+
+### Five metrics (observe-driven; design-doc has detail + citations)
+1. **Directness** — median pass distance + share-forward (`end_x>x`), combined
+   post-norm.
+2. **Width** — wing-channel (`y≤18 or y≥62`) share of pass+carry starts,
+   **attacking half only (`x≥60`)**. Refined S31: all-pitch version was
+   buildup-diluted (≈inverse possession); attacking-half isolates *attacking*
+   width and cleanly splits Portugal (wide) from Spain (narrow) at equal possession.
+3. **Line height** — **median x of BACK-LINE players' (`position LIKE '%Back%'`)
+   defensive engagements**. Calls: mean dragged low by deep Clearances/Blocks
+   (excluded); all-player median measures *press* not line (forwards press high,
+   10–17u inflation, team-dependent) → isolate defenders; mode-of-5m-bins rejected
+   (broad plateaus → unstable) for median.
+4. **Press = PPDA** (pinned + cited: Hudl/StatsBomb + Premier League) — opp
+   completed passes (`outcome IS NULL`) in own 60% (`x≤72`) ÷ team def-actions in
+   attacking 60% (`x≥48`); def set = Interception/Foul/Block/Dribbled Past +
+   **tackle-only Duels** (`raw.duel.type.name='Tackle'`; Duel is ~50% aerials).
+   Norm inverted (1 = most intense press).
+5. **Possession** — team pass-share in its matches.
+
+### Coordinate convention CONFIRMED (not assumed, rule 3)
+StatsBomb normalises every event to the acting team attacking +x; **no halftime
+flip**. Verified three ways: period split (Georgia P1 39 / P2 44 — a flip implies
+39/81), per-match stability, same-match check. → per-team `x` valid as-is.
+
+### Validation (reputation + independent recompute)
+Directness: patient sides floor (Germany .02, Italy .05, Portugal .07, Spain .16),
+direct sides top (Namibia .98, Mauritania .96). Line: Canada/Brazil/England/Spain/
+Germany highest. Press: Algeria, Mexico, Mali, **Bielsa's Uruguay 5.39**.
+**Internal consistency:** Spain near-identical across WC22 & Euro24; **Morocco
+possession .11 (WC22 low-block) vs .78 (AFCON dominant)** — vindicates the
+`(team,tournament)` grain + recency plan. Independent from-scratch recompute of
+Spain@Euro24 matched persisted exactly (line 49.00, poss 0.5815).
+
+### S32 openers
+1. **StatsBomb team → 2026 nation map** — join `team_playstyle_empirical` to the
+   WC2026 nations (FIFA-3). Not all SB teams are 2026 qualifiers; dark AFC/Gulf
+   set has no SB data → pure prior.
+2. **D2 prior leg + blend** — hand-assign the 5-axis current-2026 prior
+   (concentrate on no-data sides); `axis = (1−λ_team)·prior + λ_team·empirical`,
+   `λ_team` = intl coverage recency-weighted (2024 ≻ WC22); coach-change flag.
+3. Then **code chessboard items 1–7**, THEN design **item 8 (battle resolution)**.
+4. v2 banked: width final-third cross-check; **game-state weighting** on line
+   height (Spain 69→57 H1→H2 protecting leads); secondary press-height signal
+   (MID_FWD engagement-x); completed-vs-all pass for possession; CB-only line purity.
+
+### Files (S31, uncommitted)
+- New: `docs/playstyle_empirical_design.md`,
+  `src/load/v2_ingest/derive_team_playstyle_empirical.py`,
+  `data/config/playstyle_metrics.json`.
+- Updated: `docs/db_schema.md` (38 tables), `docs/session_state.md`.
+
+### S31 commit
+```
+S31: team-playstyle empirical leg -> team_playstyle_empirical (D2 implementation)
+
+First chessboard-implementation session. Built the empirical leg of D2 team
+playstyle from StatsBomb intl events: derive_team_playstyle_empirical.py +
+data/config/playstyle_metrics.json -> team_playstyle_empirical (96 team-tournament
+rows, 4 tournaments). Five axes (directness, width, line height, PPDA, possession),
+each raw + percentile-rank normalised across the pool. Width restricted to
+attacking half; line height = median x of back-line defensive engagements only;
+PPDA pinned + cited (tackle-only Duels). Coordinate normalisation confirmed
+empirically. Validated vs reputation + independent recompute.
+
+New:  docs/playstyle_empirical_design.md
+      src/load/v2_ingest/derive_team_playstyle_empirical.py
+      data/config/playstyle_metrics.json
+Updated: docs/session_state.md, docs/db_schema.md (38 tables)
+
+Refs: docs/playstyle_empirical_design.md, docs/chessboard_design.md, docs/session_state.md
+```
 
 ## S30 outcome — chessboard (stage 2) design, end to end (battle math deferred)
 
