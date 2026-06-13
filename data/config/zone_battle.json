@@ -1,0 +1,43 @@
+{
+  "model_version": "zone_battle_v1",
+  "_doc": "Item 7 zone battle (docs/item7_zone_battle.md). Build 1 zone at a time -- only central_L1 authored so far. Two-stage approach->main; per-duel Bradley-Terry on weighted attribute scores; stage = weighted mean of its duels; threat = main*(g + (1-g)*approach). 'att' = in-possession side (attacker / builder), 'def' = out-of-possession side (defender / presser). *_boost = EA PlayStyle FAMILIES that, if the player has one, multiply that side's attrs in this duel by family_mult (best tier).",
+  "approach_gate": 0.5,
+  "family_mult": { "base": 1.05, "plus": 1.10 },
+  "zones": {
+    "central_L1": {
+      "attack_vs_defense": {
+        "approach": [
+          { "name": "movement",  "w": 0.55,
+            "att": {"positioning": 0.6, "reactions": 0.4}, "att_boost": [],
+            "def": {"def_awareness": 0.6, "reactions": 0.4}, "def_boost": [] },
+          { "name": "shake_off",  "w": 0.45,
+            "att": {"agility": 0.5, "balance": 0.5}, "att_boost": ["dribbling", "movement"],
+            "def": {"strength": 0.5, "aggression": 0.5}, "def_boost": ["defending"] }
+        ],
+        "main": [
+          { "name": "finish_block", "w": 0.70,
+            "att": {"finishing": 0.6, "composure": 0.4}, "att_boost": ["finishing"],
+            "def": {"standing_tackle": 0.6, "def_awareness": 0.4}, "def_boost": ["defending"] },
+          { "name": "aerial",       "w": 0.30,
+            "att": {"heading_accuracy": 1.0}, "att_boost": ["finishing"],
+            "def": {"jumping": 1.0}, "def_boost": ["defending"] }
+        ]
+      },
+      "buildup_vs_pressure": {
+        "approach": [
+          { "name": "calm_vs_closing", "w": 0.50,
+            "att": {"composure": 1.0}, "att_boost": ["passing"],
+            "def": {"sprint_speed": 0.5, "acceleration": 0.5}, "def_boost": ["movement"] },
+          { "name": "lane_space",      "w": 0.50,
+            "att": {"vision": 0.6, "composure": 0.4}, "att_boost": ["passing"],
+            "def": {"interceptions": 1.0}, "def_boost": ["defending", "movement"] }
+        ],
+        "main": [
+          { "name": "play_out", "w": 1.00,
+            "att": {"short_passing": 0.6, "long_passing": 0.4}, "att_boost": ["passing"],
+            "def": {"interceptions": 0.5, "standing_tackle": 0.5}, "def_boost": ["defending"] }
+        ]
+      }
+    }
+  }
+}

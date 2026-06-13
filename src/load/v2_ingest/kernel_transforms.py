@@ -88,13 +88,22 @@ def _cells_centroid(cells):
     return cb, cl
 
 
-def transform_kernel(attack, defence, axes: dict, gains: dict,
-                     forwardness: float, fan_lane: float = 0.0,
-                     attack_band_extra: float = 0.0,
-                     defence_band_extra: float = 0.0,
-                     spread: float = 0.0, availability: float = 1.0) -> np.ndarray:
-    """Transformed 6x5 occupancy grid for ONE code; sums to `availability`
-    (1.0 by default).
+def _norm(grid: np.ndarray) -> np.ndarray:
+    s = grid.sum()
+    return grid / s if s else grid
+
+
+def transform_phase_grids(attack, defence, axes: dict, gains: dict,
+                          forwardness: float, fan_lane: float = 0.0,
+                          attack_band_extra: float = 0.0,
+                          defence_band_extra: float = 0.0,
+                          spread: float = 0.0,
+                          availability: float = 1.0) -> tuple:
+    """Return (A, D): the transformed attack-phase and defence-phase 6x5 grids
+    for ONE code, each normalised to the player's budget (`availability`, 1.0
+    by default). The possession blend is NOT applied -- it is deferred to item-8
+    aggregation (contests are directional: attacker's attack board vs defender's
+    defence board).
 
     attack/defence: lists of (band, lane, weight). axes: the 5 blended axes in
     [0,1] (0.5 = neutral). forwardness: scalar for this code.
@@ -121,12 +130,18 @@ def transform_kernel(attack, defence, axes: dict, gains: dict,
 
     A = _splat(attack,  make_pos(attack,  line_shift + attack_band_extra))
     D = _splat(defence, make_pos(defence, line_shift + press_push + defence_band_extra))
+    return _norm(A) * availability, _norm(D) * availability
 
-    p = axes["possession"]                       # phase blend (outermost op)
-    occ = p * A + (1.0 - p) * D
-    s = occ.sum()
-    occ = occ / s if s else occ                  # normalise to budget 1.0 ...
-    return occ * availability                    # ... then apply the budget boost
+
+def transform_kernel(attack, defence, axes: dict, gains: dict, forwardness: float,
+                     **kwargs) -> np.ndarray:
+    """Possession-BLENDED single board (visualization convenience). For the
+    item-8 contract use transform_phase_grids and keep the phases separate;
+    this collapses them by the possession axis for an 'average position' view.
+    Sums to the player's budget (availability)."""
+    A, D = transform_phase_grids(attack, defence, axes, gains, forwardness, **kwargs)
+    p = axes["possession"]
+    return p * A + (1.0 - p) * D
 
 
 # ---------- probe / display ----------

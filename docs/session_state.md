@@ -3,17 +3,111 @@
 > **Fast-changing.** This is "where we are right now." Updated at the end
 > of each working session. For permanent facts/rules, see `Claude.md`.
 
-**Last updated:** end of S33 (2026-06-13)
-**Current version line:** **Chessboard IMPLEMENTATION — items 1–5 DONE.** Item 4
-(playstyle→kernel transforms) + formation assembly + lateral-fan + item 5
-(PlayStyle→family map + Movement TWEAK) all built & validated end-to-end as **lazy
-pure functions** (decision B: no tables; fired at assembly time). DB unchanged at
-**41 base tables**. Inputs: `occupancy_base`, `team_playstyle_blended`, `zone_xt`,
-`player_adjusted_attributes_wide`, `ea_fc26_playstyle`. Chessboard design (D1–D7)
-locked S30 in `docs/chessboard_design.md`. Remaining: item 6 (synthesis — largely
-done inside `formation_assembly`), item 7 (attribute→zone relevance; the deferred
-attr-emphasis families land here), THEN design **item 8** (battle resolution +
-offside gate, both banked).
+**Last updated:** end of S34 (2026-06-13)
+**Current version line:** **Chessboard IMPLEMENTATION — items 1–7 DONE (item 7
+framework + 1 of 9 zones).** Item 6 synthesis (two phase-separated per-zone team
+boards) + item 7 zone-battle framework + the **Central-L1** battle all built &
+validated on real players (Kane vs Van Dijk). All lazy pure functions (decision B;
+no tables). DB unchanged at **41 base tables**. Pipeline now spans
+occupancy → SHIFT/TWEAK → team boards → class-clean two-stage zone battle → threat,
+ready for item-8 value-weighting (`zone_xt`) + aggregation → xG. Remaining: author
+the other **8 zones** (template proven, config-only), wire occupancy-weighted zone
+aggregation (battle is 1v1 so far), THEN design **item 8** (carry offside gate +
+transition term, both banked).
+
+## S34 outcome — chessboard items 6 & 7 (synthesis + zone battle, Central-L1)
+
+Implementation session, shell-relay throughout. Built item 6 (synthesis) and the
+item-7 framework + its first zone, all validated on real players/output.
+
+### Item 6 — synthesis: two phase-separated per-zone team boards (DONE)
+**Decision (S34):** synthesis outputs **separate attack + defence per-zone boards**;
+the **possession blend is deferred to item-8 aggregation**. Reason: contests are
+directional (attacker's *attack* board vs defender's *defence* board); baking
+possession `p` into the per-player board early double-uses it and blurs the two
+tactical phases that never actually coexist on the pitch.
+- Refactored `kernel_transforms`: **`transform_phase_grids()`** returns the two
+  per-phase grids `(A, D)`, each normalised to the player's budget (`availability`);
+  `transform_kernel()` is now a thin possession-blend convenience (viz only).
+- `formation_assembly`: `assemble()` stores per-slot `attack_grid`+`defence_grid`;
+  **`team_boards()`** inverts the per-slot grids into `{attack, defence}` boards,
+  each `zone_id → [(slot, position_code, ea_id, weight)]` sorted. Per-slot grids
+  stay the source of truth (item 7). `--demo` validated: ESP 4-2-3-1 attack board
+  advanced/narrow/half-space-heavy (Spain shape), defence board deeper/compact; the
+  **ST sits higher in defence than attack** (high press) — only the phase split
+  shows it. Board sum = team budget (~1000%, +25% with Relentless availability).
+
+### Item 7 — zone-battle attribute relevance + resolution (framework + Central-L1)
+Design: **`docs/item7_zone_battle.md`**.
+- **9 zones** = 3 lane-types × 3 goal-relative band-levels (mirror-folded `B1↔B6,
+  B2↔B5, B3↔B4`); the other three quarters are symmetric ops. **4 profiles** each
+  (Attack / Defense / Buildup / Pressure); pairing set by goal-relative position
+  (attacking half → Attack vs Defense; own half → Buildup vs Pressure).
+- **Class-clean S27 buckets** — each of the 29 attrs used once per contest (no
+  double-count); the Skill battle uses **pure base buckets**, NOT the S27 role
+  ratings (those blend Physical/IQ as a bonus → would double-count).
+- **Two-stage resolution:** a battle = opposed micro-duels in **approach → main**;
+  per-duel **Bradley-Terry** on weighted attribute scores; stage = weighted mean of
+  its duels; **`threat = main·(g + (1−g)·approach)`**, `g = approach_gate` (tunable;
+  0 = pure multiplicative, `g>0` lifts even contests). **PlayStyle families** modestly
+  multiply the attrs in the duels they touch (**×1.05 base / ×1.10 plus**) — this is
+  where item-5's deferred attr-emphasis families finally land.
+- Built: **`data/config/zone_battle.json`** (Central-L1 only, both contexts) +
+  **`src/load/v2_ingest/zone_battle.py`** (the 1v1 core). Validated on real players:
+  **Kane vs Van Dijk** box threat **0.388** (Kane edges finish/movement, VVD wins the
+  physical shake-off — faithful); **Van Dijk building vs Kane pressing 0.527** (plays
+  out comfortably). Tuned: **`approach_gate = 0.5`** (even ≈ 0.375, range ~0.2–0.6);
+  buildup `lane_space` **positioning → vision/composure** (EA `positioning` is
+  *attacking* positioning — wrong for a CB receiving; surfaced by real data).
+
+### S35 openers
+1. **Author the other 8 zones** in `zone_battle.json` — template proven, config-only,
+   no new code. Suggest **Wing-L1** next (byline/cross is most different from central).
+   Each its own short discussion.
+2. **Wire occupancy-weighted aggregation** — `zone_battle` is 1v1 so far; sum over all
+   players present in a zone (item-6 boards), occupancy-weighted → per-zone team contest.
+3. **THEN item 8** — value-weight each zone threat by `zone_xt` + possession-blend the
+   two directional contests → team xG/xScoreline → sim. Carry the **offside gate** +
+   **transition term** (both banked in `chessboard_design.md`).
+4. Middle-third (L3) contest-pairing ambiguity; GK track (build-up distribution starts
+   with the GK); set-piece overlay; calibrate weights / `g` / family-mult vs StatsBomb.
+
+### Files (S34, uncommitted until the commit below)
+- New: `docs/item7_zone_battle.md`, `data/config/zone_battle.json`,
+  `src/load/v2_ingest/zone_battle.py`.
+- Modified: `src/load/v2_ingest/kernel_transforms.py` (phase-grids refactor),
+  `src/load/v2_ingest/formation_assembly.py` (item-6 synthesis), `docs/session_state.md`.
+- **No DDL** — `db_schema.md` unchanged at 41 tables.
+
+### S34 commit
+```
+S34: chessboard items 6 & 7 — synthesis boards + zone battle (Central-L1)
+
+Item 6 (synthesis): formation_assembly now outputs two phase-separated per-zone
+team boards (attack + defence); possession blend deferred to item-8 aggregation
+(contests are directional). Refactored kernel_transforms -> transform_phase_grids()
+returns per-phase grids (budget-normalised); transform_kernel() is now a thin
+possession-blend convenience. team_boards() inverts per-slot grids into
+zone -> [(slot, weight)]; per-slot grids stay the source of truth.
+
+Item 7 (zone battle, framework + Central-L1): docs/item7_zone_battle.md. 9 zones
+(3 lane x 3 goal-relative band-level, mirror-folded), 4 profiles each, class-clean
+S27 buckets (each attr used once -> no double-count). Two-stage approach->main,
+per-duel Bradley-Terry, weighted stages, threat = main*(g+(1-g)*approach); EA
+PlayStyle families modestly multiply touched duel attrs (item-5 attr-emphasis lands
+here). zone_battle.json (Central-L1) + zone_battle.py (1v1 core). Validated on
+Kane vs Van Dijk (box 0.388) and Van Dijk-build vs Kane-press (0.527). Tuned
+approach_gate=0.5; buildup positioning->vision/composure (EA positioning is
+attacking-positioning, wrong for a CB receiving).
+
+New:  docs/item7_zone_battle.md, data/config/zone_battle.json,
+      src/load/v2_ingest/zone_battle.py
+Modified: src/load/v2_ingest/kernel_transforms.py, src/load/v2_ingest/formation_assembly.py,
+          docs/session_state.md
+(No DDL -- db_schema.md unchanged at 41 tables.)
+
+Refs: docs/item7_zone_battle.md, docs/session_state.md, docs/chessboard_design.md
+```
 
 ## S33 outcome — chessboard items 4 & 5 built (transforms, assembly, Movement tweak)
 
