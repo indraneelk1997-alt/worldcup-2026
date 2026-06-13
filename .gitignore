@@ -19,6 +19,10 @@ data/interim/
 *.parquet
 *.duckdb
 
+# Review artifacts (regenerable via src/tools/build_zone_battle_xlsx.py)
+zone_battle_review.xlsx
+data/config/zone_battle.parsed.json
+
 # Editor
 .vscode/
 
