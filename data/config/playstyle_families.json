@@ -1,0 +1,57 @@
+{
+  "model_version": "playstyle_families_v1",
+  "_doc": "Item 5 / Decision 6 (docs/chessboard_design.md): the 36 EA PlayStyle tags bucketed into 5 outfield families (+ GK parked, set_piece deferred). Data-validated by validate_playstyle_families.py against ea_fc26_playstyle. tier (base/plus) sets effect MAGNITUDE at item-5 TWEAK time; effects kept modest (qualitative/positional layer, never re-inflate the S29 adjusted attributes). Effect mechanics (part b) designed separately.",
+  "families": {
+    "movement":  { "effect": "kernel_tweak",  "detail": "fwd reach / spread / press-shift" },
+    "finishing": { "effect": "attr_emphasis", "detail": "finishing / shot_power / attacking heading; box" },
+    "passing":   { "effect": "attr_emphasis", "detail": "passing / vision / crossing; build-up / half-space / wide" },
+    "dribbling": { "effect": "attr_emphasis", "detail": "dribbling / ball_control; attacking lanes (+carry tweak)" },
+    "defending": { "effect": "attr_emphasis", "detail": "tackle / interceptions / defensive heading (+press tweak)" },
+    "gk":        { "effect": "parked",        "detail": "handled by the separate GK track" },
+    "set_piece": { "effect": "deferred",      "detail": "corners / free-kicks / throws overlay" }
+  },
+  "playstyle_to_family": {
+    "Rapid": "movement",
+    "Quick Step": "movement",
+    "Relentless": "movement",
+    "Press Proven": "movement",
+
+    "Finesse Shot": "finishing",
+    "Power Shot": "finishing",
+    "Low Driven Shot": "finishing",
+    "Chip Shot": "finishing",
+    "Acrobatic": "finishing",
+    "Precision Header": "finishing",
+
+    "Long Ball Pass": "passing",
+    "Pinged Pass": "passing",
+    "Incisive Pass": "passing",
+    "Inventive": "passing",
+    "Tiki Taka": "passing",
+    "First Touch": "passing",
+    "Whipped Pass": "passing",
+
+    "Technical": "dribbling",
+    "Trickster": "dribbling",
+    "Gamechanger": "dribbling",
+
+    "Intercept": "defending",
+    "Anticipate": "defending",
+    "Slide Tackle": "defending",
+    "Block": "defending",
+    "Jockey": "defending",
+    "Bruiser": "defending",
+    "Enforcer": "defending",
+    "Aerial Fortress": "defending",
+
+    "Footwork": "gk",
+    "Cross Claimer": "gk",
+    "Far Throw": "gk",
+    "Deflector": "gk",
+    "Rush Out": "gk",
+    "Far Reach": "gk",
+
+    "Dead Ball": "set_piece",
+    "Long Throw": "set_piece"
+  }
+}

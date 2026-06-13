@@ -1,0 +1,25 @@
+{
+  "model_version": "kernel_transforms_v1",
+  "_doc": "Item-4 SHIFT leg. Each axis is a percentile in [0,1], 0.5 = neutral (no shift). shift = GAIN * (axis - 0.5) * role-or-lane-factor. See docs/item4_kernel_transforms.md.",
+  "gains": {
+    "LINE_GAIN": 2.0,
+    "PRESS_GAIN": 2.0,
+    "WIDTH_GAIN": 1.0
+  },
+  "possession_remap": null,
+  "movement_tweak": {
+    "_doc": "Item 5 Movement TWEAK (docs/item5_movement_tweak.md). Per-player, modest, on top of the team SHIFT. tier base/plus picks the magnitude. effect: attack_band/defence_band = forward band SHIFT of that phase; spread = dilation of both phases about the base centroid, with an availability boost (budget >1).",
+    "Rapid":        { "effect": "attack_band",  "base": 0.30, "plus": 0.45 },
+    "Quick Step":   { "effect": "attack_band",  "base": 0.20, "plus": 0.30 },
+    "Press Proven": { "effect": "defence_band", "base": 0.30, "plus": 0.45 },
+    "Relentless":   { "effect": "spread",       "base": 0.15, "plus": 0.25,
+                      "avail_base": 0.10, "avail_plus": 0.15 }
+  },
+  "fan_step": 1.0,
+  "_fan_doc": "Lateral lane spacing for N>1 of the same central code at formation assembly. N=2 -> +/-0.5 lane (per chessboard_design item-3 banked rule). See formation_assembly.py.",
+  "board": {
+    "n_bands": 6,
+    "n_lanes": 5,
+    "center_lane": 2
+  }
+}

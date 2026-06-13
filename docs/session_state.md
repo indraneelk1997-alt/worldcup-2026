@@ -3,14 +3,141 @@
 > **Fast-changing.** This is "where we are right now." Updated at the end
 > of each working session. For permanent facts/rules, see `Claude.md`.
 
-**Last updated:** end of S32 (2026-06-12)
-**Current version line:** **Chessboard IMPLEMENTATION — D2 team playstyle FULLY
-DONE (empirical → nation map → prior+blend).** `team_playstyle_blended` built +
-applied: **48 WC2026 nations × 5 axes**, blended `(1−λ)·prior + λ·empirical`. DB
-now **39 base tables**. Chessboard design (D1–D7) locked S30 in
-`docs/chessboard_design.md`; **battle resolution (item 8) still deferred**.
-`player_adjusted_attributes_wide` (S29) is the attribute input. Next: **code
-chessboard items 1–7** (opener #3), THEN design item 8.
+**Last updated:** end of S33 (2026-06-13)
+**Current version line:** **Chessboard IMPLEMENTATION — items 1–5 DONE.** Item 4
+(playstyle→kernel transforms) + formation assembly + lateral-fan + item 5
+(PlayStyle→family map + Movement TWEAK) all built & validated end-to-end as **lazy
+pure functions** (decision B: no tables; fired at assembly time). DB unchanged at
+**41 base tables**. Inputs: `occupancy_base`, `team_playstyle_blended`, `zone_xt`,
+`player_adjusted_attributes_wide`, `ea_fc26_playstyle`. Chessboard design (D1–D7)
+locked S30 in `docs/chessboard_design.md`. Remaining: item 6 (synthesis — largely
+done inside `formation_assembly`), item 7 (attribute→zone relevance; the deferred
+attr-emphasis families land here), THEN design **item 8** (battle resolution +
+offside gate, both banked).
+
+## S33 outcome — chessboard items 4 & 5 built (transforms, assembly, Movement tweak)
+
+Implementation session, shell-relay throughout (rule 12). Built the **SHIFT + TWEAK**
+legs of the occupancy spine as **lazy pure functions** (decision B — no tables, fired
+at formation-assembly time). All validated end-to-end via read-only probes.
+
+### Item 4 — playstyle-axis → kernel transforms (DONE)
+Design: `docs/item4_kernel_transforms.md`. `transform_kernel()` in
+`src/load/v2_ingest/kernel_transforms.py` warps a code's two `occupancy_base` phase
+kernels by a team's 5 blended axes:
+- **possession** = phase blend `p·attack+(1−p)·defence` (outermost op)
+- **line_height** = band translate (both phases)
+- **press (ppda)** = forward push of the **defence kernel only**, weighted by empirical
+  `forwardness(code)` (min-max of defence-phase centroid band; FW 1.0 → CB 0.0). CB=0
+  ⇒ press never moves the back line. **Compression EMERGES** from line+press (no
+  separate term, locked S33).
+- **width** = lateral lane stretch ∝ `(lane−2)`; resolves LM/RM (narrow tucks them to
+  the half-space; wide clips at touchline).
+- **directness** = battle-layer (item 8), no static effect.
+Mechanics: **bilinear splat** (smooth, mass-conserving) + edge-clip + renormalise.
+Gains LOCKED S33 (`kernel_transforms.json`, env-overridable): **LINE 2.0, PRESS 2.0,
+WIDTH 1.0** (±20 m line/press, ±16 m width at axis extremes). Validated: ESP CB
+blended centroid matched the hand-prediction **exactly (2.041)**; URU press pushes ST
+up; POR (wide) vs ESP (narrow) winger split clean.
+
+### Formation assembly + lateral-fan (DONE)
+`formation_assembly.py` — reuses the legacy `formations`/`formation_slots` (10
+formations, slot→`position_code`). `assemble(formation, nation, [xi])` loops slots →
+item-4 transform per slot. **Lateral-fan:** N>1 of a CENTRAL code (lane-2:
+GK,CB,DF,DM,MF,CM,CAM,ST,FW) → symmetric lane offset (`FAN_STEP=1.0` → ±0.5, folded
+into the single resample). GK parked. Validated: ESP 4-2-3-1 double `DM` → lanes
+**1.500 / 2.500**; URU 3-5-2 front-two `ST` → 1.544 / 2.456 (slight inset = expected
+edge-clip).
+
+### Item 5 — player PlayStyle TWEAK (Movement leg DONE; attr-emphasis → item 7)
+Split into two parts:
+- **(a) tag→family map** = `data/config/playstyle_families.json` (36 tags → 5 families
+  + GK/set-piece carve-outs), validated live by `validate_playstyle_families.py`
+  (**PASS 36/36**; movement 4, finishing 6, passing 7, dribbling 3, defending 8, gk 6,
+  set_piece 2).
+- **(b) effects split by kind:**
+  - **Movement** (Rapid, Quick Step, Relentless, Press Proven) = kernel tweak → **BUILT**.
+    Rapid/Quick Step = forward band **SHIFT of the attack kernel** (a translate, not a
+    forward tail — they stay maximally advanced). Press Proven = forward shift of the
+    **defence** kernel (personal high-press, additive on team press). Relentless =
+    **spread** (dilation about the per-phase base centroid) **+ availability boost**
+    (budget rises >1: base 1.10 / plus 1.15 — "more available"; team intentionally NOT
+    renormalised). base/plus magnitudes in `kernel_transforms.json` `movement_tweak`.
+    Multiple tags **add**.
+  - **Finishing / Passing / Dribbling / Defending** = attr emphasis → **DEFERRED to
+    item 7** (they compound the zone-attribute matrix; nothing to modulate until it exists).
+Integration: `assemble()` gained optional `xi={slot_no: ea_id}` (no XI = neutral, the
+default); the player tweak folds into `transform_kernel`'s **single** resample.
+Validated with `--demo` (real movers): stacking works (a Relentless+/Rapid/Quick Step
+DM → band up + **sum 115%**); every unfilled slot byte-identical to neutral.
+
+### Banked for item 8 (design notes, in `chessboard_design.md`)
+- **Offside = relational threat-gate, NOT an occupancy clip.** Enter ONCE at the
+  contest (gate *threat*, not presence) → no double-count (empirical occupancy is
+  already onside-realistic). **Offside line = REARMOST outfield defender** (2nd-last
+  opponent), read off the deepest CB's **occupancy distribution** → **probabilistic**
+  gate; NOT the `line_height` mean (dragged forward by pressers). `line_height` enters
+  only via where item 4 puts the CB kernel. Pace (Rapid/Quick Step "danger-zone nudge",
+  banked item 5) modulates the gate.
+- (S32-carried) transition/turnover value (56% of open-play goals) = battle-layer term,
+  not in static xT.
+
+### S34 openers
+1. **Item 6 — synthesis.** Largely already done: `formation_assembly` composes
+   BASE⊕SHIFT⊕TWEAK. May only need the **tier/output shape** (home/primary/secondary/
+   tertiary slicing of the final kernel) + a clean return contract for items 7/8.
+2. **Item 7 — attribute→zone relevance matrix** (D7). The deferred 4 attr-emphasis
+   families land here, compounding the team-generic `(lane-type × band × phase)` matrix.
+   Consumes `player_adjusted_attributes_wide`.
+3. **THEN design item 8** — battle resolution + xScoreline, carrying the offside gate +
+   transition term banked above.
+4. v2 banked: item-4 per-phase line treatment + possession→share remap curve; width
+   StatsBomb calibration; Quick Step lateral-separation component; pace↔press tradeoff;
+   spread-narrowing under extreme press.
+
+### Files (S33, uncommitted until the commit below)
+- New: `docs/item4_kernel_transforms.md`, `docs/item5_movement_tweak.md`,
+  `data/config/kernel_transforms.json`, `data/config/playstyle_families.json`,
+  `src/load/v2_ingest/kernel_transforms.py`, `src/load/v2_ingest/formation_assembly.py`,
+  `src/load/v2_ingest/validate_playstyle_families.py`.
+- Updated: `docs/chessboard_design.md` (item-8 offside finding), `docs/session_state.md`.
+- **No DDL** — decision B adds no tables; `db_schema.md` unchanged at 41.
+
+### S33 commit
+```
+S33: chessboard items 4 & 5 — kernel transforms, formation assembly, Movement tweak
+
+Built the SHIFT + TWEAK legs of the occupancy spine as lazy pure functions
+(decision B; no tables, fired at assembly time).
+
+Item 4 (kernel_transforms.py + data/config/kernel_transforms.json): transform_kernel
+warps occupancy_base phase kernels by team_playstyle_blended axes -- possession
+phase-blend, line band-translate, press forward-push of the defence kernel
+(forwardness-weighted, CB=0 so the back line is untouched; compression emergent),
+width lane-stretch. Bilinear splat + renorm. Gains LINE/PRESS/WIDTH = 2/2/1.
+
+Formation assembly (formation_assembly.py): reuses formations/formation_slots;
+item-4 transform per slot + lateral-fan for duplicated central codes (FAN_STEP 1.0,
+folded into one resample); GK parked.
+
+Item 5 (playstyle_families.json + validate_playstyle_families.py): 36 EA PlayStyles
+-> 5 families + GK/set-piece, validated live (PASS 36/36). Movement leg built into
+transform_kernel (Rapid/Quick Step forward attack shift; Press Proven forward defence
+shift; Relentless spread + availability boost >1) + optional xi wired into assembly.
+Finishing/Passing/Dribbling/Defending deferred to item 7.
+
+Offside banked for item 8 (chessboard_design.md): relational threat-gate off the
+rearmost defender's occupancy distribution, not the line_height mean; no occupancy
+clip / no double-count; pace modulates.
+
+New:  docs/item4_kernel_transforms.md, docs/item5_movement_tweak.md,
+      data/config/{kernel_transforms,playstyle_families}.json,
+      src/load/v2_ingest/{kernel_transforms,formation_assembly,validate_playstyle_families}.py
+Updated: docs/chessboard_design.md, docs/session_state.md
+(No DDL -- db_schema.md unchanged at 41 tables.)
+
+Refs: docs/item4_kernel_transforms.md, docs/item5_movement_tweak.md, docs/chessboard_design.md
+```
 
 ## S32 outcome — D2 team playstyle FINISHED (nation map + prior/blend)
 

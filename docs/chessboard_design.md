@@ -92,6 +92,45 @@ bug — the L/R flip must key on the acting `team`, not `possession_team`; the r
 grid + 56% headline are clean (scorer-frame), the raw last-5 grid is not. Probe is
 deletable; the finding is banked here.)
 
+### Finding for item 8 — offside is a relational gate, NOT an occupancy clip (S33)
+
+Offside must be modelled, but it belongs in the **battle layer**, not the
+occupancy assembly, because it is **relational**: a striker is offside only
+relative to the *opponent's* last line, and a per-team kernel has no knowledge
+of the other team's board. Two principles locked S33:
+
+- **Enter offside ONCE, at the contest — do NOT clip attacking occupancy.**
+  `occupancy_base` is empirical StatsBomb positions, so the *average* attacker is
+  already onside-realistic (this is why ST is anchored at band 4.5, not 5). A
+  second occupancy clip would **double-count** the discipline already in the data,
+  and would be non-relational (a constant blind to the actual opponent line) and
+  would wrongly forbid the legal, common case of a striker in B6 played onside.
+  So item 8 leaves the assembled boards untouched and gates **threat**, not
+  presence: an attacker's open-play threat in bands ahead of the offside line is
+  suppressed/discounted.
+
+- **The offside line = the REARMOST outfield defender, not the team mean/median
+  (`line_height`).** The `line_height` axis is the *average* defensive engagement
+  height, dragged forward by pressing mids/forwards; using it as the offside line
+  would set the line far too high and flag onside attackers. The law's line is the
+  **second-last opponent** (GK is last) — i.e. the deepest outfield defender (the
+  CBs). Build it carefully:
+  1. **Derive the line from the rearmost defender's OCCUPANCY** (the deepest CB's
+     kernel), read off the defending team's *assembled* board — never from the
+     `line_height` axis directly.
+  2. **It's a distribution, not a point** — the deepest CB holds a band *with
+     spread*, and the line moves play-to-play → offside gating should be
+     **probabilistic**: attacker mass at band `b` is onside with a probability set
+     by the rearmost-defender band distribution, not a hard cutoff.
+  3. **`line_height` enters only indirectly** — a high line shifts the CB kernel up
+     (item 4), so the line read off that shifted kernel is higher. The axis matters
+     through *where it puts the back line*, never as the line itself.
+
+- **Pace modulates the gate** (ties to the banked item-5 "danger-zone nudge"):
+  Rapid/Quick Step = better at timing runs to stay onside while threatening the
+  highest band → fast attackers beat the trap more often. So the pace nudge is a
+  modulation of the offside gate, not a free pass. Banked for item-8 design.
+
 ### Item 2 implementation — position → home anchor (LOCKED S32)
 
 Canonical vocab = the **`positions` table** (23 `position_code`s + `position_class`
