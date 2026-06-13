@@ -3,17 +3,81 @@
 > **Fast-changing.** This is "where we are right now." Updated at the end
 > of each working session. For permanent facts/rules, see `Claude.md`.
 
-**Last updated:** end of S34 (2026-06-13)
-**Current version line:** **Chessboard IMPLEMENTATION — items 1–7 DONE (item 7
-framework + 1 of 9 zones).** Item 6 synthesis (two phase-separated per-zone team
-boards) + item 7 zone-battle framework + the **Central-L1** battle all built &
-validated on real players (Kane vs Van Dijk). All lazy pure functions (decision B;
-no tables). DB unchanged at **41 base tables**. Pipeline now spans
-occupancy → SHIFT/TWEAK → team boards → class-clean two-stage zone battle → threat,
-ready for item-8 value-weighting (`zone_xt`) + aggregation → xG. Remaining: author
-the other **8 zones** (template proven, config-only), wire occupancy-weighted zone
-aggregation (battle is 1v1 so far), THEN design **item 8** (carry offside gate +
-transition term, both banked).
+**Last updated:** end of S35 (2026-06-13)
+**Current version line:** **Chessboard IMPLEMENTATION — items 1–7 DONE (all 9 zones
+authored).** Item 7 zone-battle now covers all **9 zones** (3 lane × 3 level, 4
+profiles, 66 duels) in `zone_battle.json`, validated on real players. All lazy pure
+functions (decision B; no tables). DB unchanged at **41 base tables**. Pipeline spans
+occupancy → SHIFT/TWEAK → team boards → class-clean two-stage zone battle → threat.
+Remaining: **wire occupancy-weighted zone aggregation** (battle is 1v1 so far), THEN
+design **item 8** (value-weight by `zone_xt` + possession-blend → xG; carry offside
+gate + transition term, both banked).
+
+## S35 outcome — item 7 fully authored (all 9 zones) + Excel review workflow
+
+Finished item 7: authored the remaining 7 zone-battle profiles via an editable-Excel
+round-trip (maintainer reviewed/tuned offline), promoted to the live config, plus a
+resolver robustness fix. Shell-relay throughout.
+
+### All 9 zones live (`data/config/zone_battle.json`, 66 duels)
+`central_L1` + `wing_L1` tuned on real players (S34); the other 7 (`central_L2/L3`,
+`halfspace_L1/L2/L3`, `wing_L2/L3`) drafted by Claude, then reviewed + tuned by the
+maintainer in `zone_battle_review.xlsx` and parsed back. Maintainer edits (all sound):
+**`sliding_tackle` threaded into last-ditch / recovery defending** across zones;
+**edge-box shot rewards `finishing`** (C-L2); **sustained press adds `stamina`** (C-L3/
+HS-L3); **cutback defending uses `def_awareness`** not positioning (HS-L1). One typo
+caught + realigned (HS-L3 `carry_through` def). Spot-checked **HS-L2 Bellingham vs Van
+Dijk → 0.377** (creator vs elite CB; defender edges the approach, attacker the key-pass).
+
+### Excel review workflow (new, reusable — `src/tools/`)
+- **`build_zone_battle_xlsx.py`** → `zone_battle_review.xlsx`: flattens the config to a
+  long editable grid (zones / params / legend sheets; locked rows green, drafts yellow).
+  Run via `uv run --with openpyxl …` (transient dep, no `pyproject` change).
+- **`parse_zone_battle_xlsx.py`** → reads the edited xlsx, **validates** (attr names ∈ the
+  29, families valid, duel-weight sums ≈ 1), reconstructs nested config → staging
+  `zone_battle.parsed.json`. Clean round-trip pattern for any future config authoring.
+
+### Resolver fix — weighted MEAN (`zone_battle.py`)
+`_side_score` is now a weighted **mean** (`Σ w·attr / Σ w`), not a sum → attr weights need
+not sum to 1 (only **ratios** matter), immunising duels against weight-sum typos.
+Backward-compatible for the tuned zones (their weights summed to 1, so Central-L1 still
+reads 0.388). Family multiplier applies to the side average.
+
+### S36 openers
+1. **Wire occupancy-weighted aggregation** — `zone_battle` is 1v1; aggregate over all
+   players present in a zone (item-6 boards), occupancy-weighted → per-zone team contest
+   for both directional pairings.
+2. **THEN item 8** — value-weight each zone threat by `zone_xt` + possession-blend the two
+   contests → team xG/xScoreline → sim. Carry the offside gate + transition term (banked).
+3. Middle-third (L3) pairing nuance; GK track; set-piece overlay; calibrate
+   weights / `approach_gate` / family-mult vs StatsBomb.
+
+### Files (S35, uncommitted until the commit below)
+- New: `src/tools/build_zone_battle_xlsx.py`, `src/tools/parse_zone_battle_xlsx.py`.
+- Modified: `data/config/zone_battle.json` (all 9 zones), `src/load/v2_ingest/zone_battle.py`
+  (weighted mean), `docs/session_state.md`.
+- Untracked artifact: `zone_battle_review.xlsx` (regenerable; left out of git).
+- **No DDL** — `db_schema.md` unchanged at 41 tables.
+
+### S35 commit
+```
+S35: item 7 fully authored — all 9 zone-battle profiles + xlsx review workflow
+
+Authored the remaining 7 zone-battle profiles (central_L2/L3, halfspace_L1/L2/L3,
+wing_L2/L3) via an editable-Excel round-trip: build_zone_battle_xlsx.py flattens the
+config to a long grid; parse_zone_battle_xlsx.py validates + reconstructs it. Maintainer
+reviewed/tuned offline (sliding_tackle in last-ditch defending, finishing in edge-box
+shot, stamina in sustained press, def_awareness for cutbacks; one typo realigned). All 9
+zones now live in zone_battle.json (66 duels). Resolver: _side_score -> weighted MEAN
+(sum-invariant, typo-proof, backward-compatible). Validated: Central-L1 unchanged (0.388),
+HS-L2 Bellingham vs Van Dijk 0.377.
+
+New:  src/tools/build_zone_battle_xlsx.py, src/tools/parse_zone_battle_xlsx.py
+Modified: data/config/zone_battle.json, src/load/v2_ingest/zone_battle.py, docs/session_state.md
+(No DDL -- db_schema.md unchanged at 41 tables.)
+
+Refs: docs/item7_zone_battle.md, docs/session_state.md
+```
 
 ## S34 outcome — chessboard items 6 & 7 (synthesis + zone battle, Central-L1)
 

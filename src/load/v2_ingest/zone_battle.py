@@ -77,8 +77,13 @@ def _family_mult(player: dict, boost_families: list, fmult: dict) -> float:
 
 
 def _side_score(player: dict, attr_w: dict, boost: list, fmult: dict) -> float:
+    # weighted MEAN of the relevant attrs (sum-invariant: only weight RATIOS
+    # matter, so attr weights need not sum to 1 and a typo can't bias a duel).
     m = _family_mult(player, boost, fmult)
-    return sum(w * player["attrs"][a] * m for a, w in attr_w.items())
+    tot = sum(attr_w.values())
+    if tot == 0:
+        return 0.0
+    return m * sum(w * player["attrs"][a] for a, w in attr_w.items()) / tot
 
 
 def _bt(a: float, d: float) -> float:
