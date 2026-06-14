@@ -3,15 +3,118 @@
 > **Fast-changing.** This is "where we are right now." Updated at the end
 > of each working session. For permanent facts/rules, see `Claude.md`.
 
-**Last updated:** end of S36 (2026-06-14)
-**Current version line:** **Chessboard item 8 — aggregation IN PROGRESS.** Items 1–7
-DONE. Item 8 steps **A (occupancy-weighted β-sum aggregation; β=1 locked)** + **C
-(zone_xt value-weight)** + **D-anchor (measured ~1.18 xG/team-match)** built &
-validated on real ENG-vs-NED. DB unchanged at **41 base tables** (item-8 layer is
-read-only orchestration; no DDL). Pipeline now: occupancy → SHIFT/TWEAK → team boards
-→ class-clean zone battle → **β-sum team aggregation → zone_xt value surface**.
-Remaining for xScoreline: **B (conversion + GK), D-fit (VOLUME constant), E (bivariate
-Poisson)**. Design doc: `docs/item8_aggregation.md`.
+**Last updated:** end of S37 (2026-06-14)
+**Current version line:** **Chessboard item 8 — A,B,C,D DONE; only E (scoreline) left.**
+Items 1–7 DONE. Item 8: **A** (β-sum aggregation, β=1) + **B** (conversion + GK
+shot-stopping) + **C** (zone_xt value) + **D** (VOLUME = **199.4** fitted vs ~1.18
+xG/tm) all built & validated; plus a **quality×caps XI selection model** and the
+**xG-variance analysis**. Remaining: **E — bivariate Poisson → scoreline** (accept
+spread vs mild shrinkage; validate simulated goals dist vs empirical). DB unchanged at
+**41 tables** (item-8 layer is read-only orchestration; no DDL). Design doc:
+`docs/item8_aggregation.md`.
+
+## S37 outcome — item 8 steps B (conversion+GK) + D-fit (VOLUME) + selection + variance
+
+Big session, shell-relay throughout. Closed three of item 8's remaining pieces (B, the
+xG-variance analysis, D-fit) plus a quality-led XI selection model. Only **E (bivariate
+Poisson → scoreline)** is left. Full as-built design in `docs/item8_aggregation.md`.
+
+### Step B — conversion + GK (DONE)
+- **Fork resolved: PARTITION** (each attr one job). Re-authored the 4 shooting zones
+  (`central_L1, central_L2, halfspace_L1, halfspace_L2`) to drop `finishing` from the
+  attacking duel → the duel is now "get the shot away vs the block"; `finishing` moves
+  to conversion. central_L1 box duel → `composure+balance`; approach `shake_off` swapped
+  `balance→ball_control` (maintainer). Only `finishing` was double-counted (long_shots/
+  curve/dribbling/heading stay — not in conversion-v1); Finishing-family boost moved to
+  conversion everywhere. Validated: Kane vs VVD box threat 0.388→0.356 (finishing left
+  the duel).
+- **Conversion** (`zone_aggregate.py`): `value_z *= (1−shot_share)+shot_share·conv_rel`.
+  `shot_share = s·g/xt` (zone_xt cols) → box ~0.75, deep ~0 (bites only where shots are).
+  `conv_rel = 2·BT(finish, gk)` centred 1.0; finisher = **occ-weighted MEAN** of
+  finishing+shot_power (+Finishing boost); GK = mean(gk_diving/handling/positioning/
+  reflexes) from raw EA (`ea_fc26_player`; GKs have no adjusted attrs). Validated ENG vs
+  NED (Verbruggen 77.8): box conv_rel 1.072, wing shot_share 0 (untouched). **Net
+  ~neutral for ENG** = clean relocation (conversion *differentiates* finishers, doesn't
+  move the mean).
+- **Finisher-selection settled (maintainer):** occupancy already does shooter-selection
+  because the attack kernels are *empirical on-ball presence* (box occ = has-the-ball-in-
+  box = the shooter). Adding a finishing-weight would double-apply finishing. Kept the
+  occ-weighted mean. v2 caveat: on-ball ≠ shots; shot-specific occupancy would sharpen.
+
+### xG-variance analysis (398 team-matches) — NO overdispersion term needed
+- team-xG: mean 1.178, **std 0.732** (right-skewed, max 4.32). **Goals only mildly
+  overdispersed: var/mean 1.178.** **KEY:** the xG-metric variance (0.536) overstates
+  the scoring-RATE variance; effective `std(λ) ≈ 0.45`, not 0.73 (~2/3 of xG spread
+  doesn't reach the scoreline — xg-sum inflates via shot volume). Finishing noise
+  (`goals−xG` std 0.994) ≈ Poisson-consistent → **plain bivariate Poisson is adequate.**
+  Acceptance test for E = the goals distribution (`0:34% 1:35% 2:20% 3:8% …`), NOT the
+  raw xG std. Full detail in item8 doc.
+
+### XI selection model (NEW) — quality × caps
+- `selection_scores()` (off `_probe_adjusted_ratings.build()`): score = 0.6·adjusted-
+  role-rating-pct + 0.4·caps-pct. Role rating per group: DEF→adj_Defense, FWD→adj_Attack,
+  MID→two-way. `autopick_xi(con, nation, formation, scores)` greedy-fills slots by score
+  (caps fallback). Fixed the caps-only XIs (Yamal/Pedri/Upamecano/Saliba/J.Álvarez now
+  picked). **Banked:** Vinícius drops out — likely a cross-source linkage/Understat-
+  coverage gap excluding him from the adjusted-attrs pool (one-line check owed). v2:
+  blend weight tunable; formation-per-team; position-fuzz (Casemiro coded DEF).
+
+### Step D-fit — VOLUME (DONE)
+- Round-robin 47/48 nations (1 dark squad skipped), 2,162 matchups → index mean 0.00591
+  → **VOLUME = 199.4**. team_xG mean 1.178 (by construction), **std 0.588**: median 1.09
+  (vs empirical 1.07), max 4.19 (vs 4.32), **no 1-1 trap**. Slightly wide of the 0.45
+  effective target → Poisson var/mean ≈ 1.29 vs 1.18 (ample spread; may apply mild
+  shrinkage in E). VOLUME not yet in config — promote when E lands.
+
+### Files (S37, uncommitted until the commit below)
+- Modified: `data/config/zone_battle.json` (partition: 4 shooting zones; ball_control/
+  balance swap), `src/load/v2_ingest/zone_aggregate.py` (conversion + GK, autopick_xi,
+  selection_scores, fit_volume, compute_attack_index, _assemble_team, demo_autoxi),
+  `docs/item8_aggregation.md`, `docs/session_state.md`.
+- **No DDL** — read-only orchestration; `db_schema.md` unchanged at 41 tables.
+
+### S38 openers
+1. **Step E — bivariate Poisson → scoreline.** λ_A = VOLUME·index(A att vs B def),
+   λ_B likewise; bivariate Poisson (md38 precedent) + correlation/draw term → scoreline
+   distribution → sim. **Decide:** accept the 0.588 spread or apply mild shrinkage toward
+   0.45. **Validate the simulated goals distribution vs the empirical one** (the S37
+   acceptance test), plus draw rate. Promote VOLUME to config.
+2. Then: Streamlit/dashboard; full-tournament sim (groups + knockouts).
+3. Banked refinements: Vinícius linkage check; quality-aware **formation-per-team**
+   (not all 4-3-3); shot-specific occupancy for conversion; selection blend-weight tune;
+   half-space `zone_xt`/cross-vs-cutback calibration; the 1 unassembled nation.
+4. v2: GK empirical adjusted rating (xG-faced − goals-conceded; data exists); set-piece
+   overlay; transition/turnover term (mistake events: Miscontrol/Dispossessed×under_
+   pressure, banked S37); middle-third pairing; offside gate.
+
+### S37 commit
+```
+S37: item 8 steps B (conversion+GK) + D-fit (VOLUME) + XI selection + variance
+
+Step B (conversion): PARTITIONED finishing out of the 4 shooting-zone duels (now
+"get the shot away") into a conversion layer. value *= (1-shot_share) + shot_share*
+conv_rel; shot_share = s*g/xt (box ~0.75, deep ~0); conv_rel = 2*BT(finisher, GK),
+centred 1.0; finisher = occ-weighted mean finishing+shot_power, GK = raw-EA
+gk_diving/handling/positioning/reflexes. Validated ENG vs NED. Finisher-selection kept
+as occupancy (empirical on-ball presence already selects the shooter).
+
+XI selection: selection_scores() = 0.6*adjusted-role-rating + 0.4*caps; autopick_xi
+greedy-fills by score (fixes caps-only XIs -> Yamal/Upamecano/Saliba/J.Alvarez in).
+
+D-fit: round-robin 47/48 nations, 2162 matchups -> VOLUME = 1.178/0.00591 = 199.4.
+team_xG mean 1.178, std 0.588 (median/max match reality; no 1-1 trap; slightly wide of
+the 0.45 effective target).
+
+Variance analysis (398 team-matches): goals only mildly overdispersed (var/mean 1.18);
+effective rate-std ~0.45 << raw xG std 0.73; finishing noise ~Poisson -> plain
+bivariate Poisson adequate, NO overdispersion term. Acceptance test = goals dist.
+
+Modified: data/config/zone_battle.json, src/load/v2_ingest/zone_aggregate.py,
+          docs/item8_aggregation.md, docs/session_state.md
+(No DDL -- read-only orchestration; db_schema.md unchanged at 41 tables.)
+
+Refs: docs/item8_aggregation.md, docs/session_state.md
+```
 
 ## S36 outcome — item 8 aggregation (steps A + C) + VOLUME anchor measured
 

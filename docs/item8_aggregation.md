@@ -116,20 +116,36 @@ without the full GK track (build-up distribution, claiming crosses stay deferred
 `conv_rel = f(finisher) / g(GK)` shape, BT-style, centred so an average finisher vs
 an average GK ≈ 1.0.
 
-### OPEN FORK — finishing double-count
-`finishing` already sits in the item-7 box **main** duel (D3: "beat the block / get
-the shot away"). If it *also* drives `conv_rel` ("beat the keeper"), the same attr is
-used twice — violating item-7's class-clean rule unless we treat them as two genuinely
-distinct events. **Options to decide when we code B:**
-1. **Accept the split** — duel `finishing` = win the right to shoot; conversion
-   `finishing` = shot quality vs GK. Defensible (two real events), but document it as
-   a deliberate exception to class-clean.
-2. **Partition the attrs** — duel uses e.g. `composure`/`agility` to get free;
-   conversion reserves `finishing`/`shot_power` for the shot-vs-GK. Stays class-clean,
-   but may weaken the duel.
-3. **Conversion uses only the residual** — finishing's duel use stays; conversion uses
-   GK-facing attrs the duel doesn't (`shot_power`, `volleys`, `composure`).
-Not resolved here — flagged for the B build discussion.
+### RESOLVED (S37) — partition the attrs + scope conversion to the shot component
+**Fork resolved: PARTITION** (maintainer, S37). `finishing` leaves the box duels and
+moves to conversion; each attribute keeps exactly one job.
+
+- **Box main duel** becomes "get the shot away vs the block" → `composure` /
+  `ball_control` vs `standing_tackle` / `def_awareness` (finishing removed; the
+  Finishing-family `att_boost` moves to conversion). Re-author the ~4 shooting zones
+  that currently put `finishing` in the att duel: central_L1, the edge-of-box
+  long-shot zone, the half-space finesse zone, and the dribble-finish zone.
+- **Conversion** = "beat the keeper" → finisher `finishing` + `shot_power`
+  (occ-weighted over attackers present, + Finishing-family boost) vs GK
+  `reflexes / diving / positioning / handling`. GKs have **no adjusted attrs**
+  (separate track) → pull raw EA from `ea_fc26_player`.
+
+**Form:** `conv_rel = 2 · BT(finish_score, gk_score)` → centred **1.0** (avg-vs-avg
+BT = 0.5), range (0, 2), gain tunable. It re-scales `zone_xt`'s baked-in *average*
+conversion `g(z)`, so an average finisher leaves value untouched.
+
+**Scope — only the shot component (grounded in `derive_zone_xt`):**
+`xt(z) = s(z)·g(z) + m(z)·Σ T·xt`. The immediate shot value is `s·g`; the rest is
+progression. So conversion weights by **`shot_share_z = s(z)·g(z) / xt(z)`** (both are
+`zone_xt` columns): box ≈ 0.75 → conversion bites; deep zones ≈ 0 → pure progression,
+untouched. Applied per zone:
+
+```
+value_z *= (1 − shot_share_z) + shot_share_z · conv_rel
+```
+
+v1 uses one `conv_rel` (finishing+shot_power) across shooting zones; zone-specific
+conversion attrs (box→finishing, edge→long_shots) banked as a refinement.
 
 ---
 
@@ -185,6 +201,52 @@ team_xG (match) = VOLUME × Σ_zones [ entry_share_z · zone_xt_z · P(win)_z ·
 - Reference index point: the S36 ENG-vs-NED sweep gave an attacking-value index of
   **0.00853** (ENG, above-average attack, pre-conversion). Calibrate against the
   *average* team, not this one.
+
+### VOLUME fit — round-robin (S37)
+
+- 47/48 nations assembled (1 dark squad skipped), **2,162 matchups**, greedy
+  **quality×caps** XIs (selection score = 0.6·adjusted-role-rating-pct + 0.4·caps-pct;
+  `selection_scores()` off `_probe_adjusted_ratings.build()`).
+- index mean 0.00591 → **VOLUME = 1.178 / 0.00591 = 199.4**.
+- **team_xG: mean 1.178 (by construction), std 0.588** | min 0.07, p10 0.53, p50 1.09,
+  p90 1.95, **max 4.19**.
+- **Read:** median matches empirical (1.09 vs 1.07), demolitions reach 4+ (max 4.19 vs
+  4.32), **no 1-1 trap** (std 0.588 ≫ 0.3). Tails slightly compressed vs raw xG
+  (p10 0.53 vs 0.32, p90 1.95 vs 2.29).
+- vs effective-rate target 0.45: model slightly **wide** → Poisson would give
+  var/mean ≈ 1 + 0.588²/1.178 ≈ **1.29** vs empirical 1.18 → ample spread (opposite of
+  the 1-1 fear). In E: accept or apply mild shrinkage; definitive test = simulated goals
+  dist vs empirical.
+- VOLUME 199.4 is a fitted constant (round-robin all-48; refine matchup weighting +
+  formation-per-team later). Promote to config when E lands.
+- **Banked curiosity:** Vinícius Jr drops out of BRA's XI — likely a cross-source
+  linkage / Understat-coverage gap (S27) excluding him from the adjusted-attrs pool,
+  not a ranking issue. One-line check owed.
+
+### Variance / spread — the SECOND calibration target (S37, 398 team-matches)
+
+- **xG/tm distribution:** mean 1.178, **std 0.732** (std/mean 0.62), right-skewed —
+  min 0.00, p10 0.32, p25 0.65, p50 1.07, p75 1.57, p90 2.29, **max 4.32**. Real
+  demolitions (Germany 4.32) and no-shows (≤0.1) both exist → blowout potential is
+  real; a too-narrow *model* xG spread is what would force everything to 1-1.
+- **Goals only MILDLY overdispersed:** var/mean = **1.178** (Poisson = 1.0). Goals dist
+  per tm: `0:134  1:138  2:81  3:30  4:9  5+:6`.
+- **KEY inversion:** the xG-metric cross-match variance (0.536) *overstates* the scoring-
+  RATE variance needed to reproduce goal variance. From var/mean: effective
+  `Var(λ) = (1.178−1)·1.156 ≈ 0.21 → std(λ) ≈ 0.45`, vs raw xG std 0.73. **~2/3 of xG's
+  spread doesn't reach the scoreline** (xg-sum inflates via shot volume/independence —
+  e.g. Germany 4.32 on 31 shots). So **target the goals distribution, NOT the raw xG std.**
+- **Finishing noise** (`goals−xG`): mean −0.02 (xg unbiased), **std 0.994** ≈ Poisson-
+  consistent (Poisson would give ~1.09). → **plain bivariate Poisson is structurally
+  adequate; NO negative-binomial / overdispersion term needed.** Variety comes from the
+  team-xG spread, not from fattening Poisson.
+- **Acceptance test for the sim (E):** reproduce the goals distribution above +
+  var/mean ≈ 1.18 + the draw rate — NOT the raw xG std. Guards against BOTH the 1-1
+  trap and over-blowout.
+- **Outliers = volume and/or quality + heavy finishing noise:** Germany 4.32/31 shots
+  (volume), Brazil 3.75/17 @ 0.22 xg/shot (quality); dominant teams routinely waste it
+  (Argentina 3.54→2, 2.78→1; Czechia 2.87→1). Our model gets volume+quality from
+  occupancy dominance in dangerous zones; Poisson supplies the wastefulness.
 
 ### Rejected for v1: full Markov possession-flow (→ v2)
 Treating the zone win-probs as progression transitions so volume *emerges* is more

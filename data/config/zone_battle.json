@@ -31,7 +31,7 @@
             "w": 0.45,
             "att": {
               "agility": 0.5,
-              "balance": 0.5
+              "ball_control": 0.5
             },
             "att_boost": [
               "dribbling",
@@ -51,12 +51,10 @@
             "name": "finish_block",
             "w": 0.7,
             "att": {
-              "finishing": 0.6,
-              "composure": 0.4
+              "composure": 0.5,
+              "balance": 0.5
             },
-            "att_boost": [
-              "finishing"
-            ],
+            "att_boost": [],
             "def": {
               "standing_tackle": 0.6,
               "def_awareness": 0.4
@@ -71,9 +69,7 @@
             "att": {
               "heading_accuracy": 1.0
             },
-            "att_boost": [
-              "finishing"
-            ],
+            "att_boost": [],
             "def": {
               "jumping": 1.0
             },
@@ -186,13 +182,10 @@
             "name": "shoot_edge",
             "w": 0.6,
             "att": {
-              "long_shots": 0.6,
-              "finishing": 0.2,
-              "composure": 0.2
+              "long_shots": 0.7,
+              "composure": 0.3
             },
-            "att_boost": [
-              "finishing"
-            ],
+            "att_boost": [],
             "def": {
               "standing_tackle": 0.6,
               "def_awareness": 0.4
@@ -474,13 +467,10 @@
             "name": "finish_curl",
             "w": 0.6,
             "att": {
-              "finishing": 0.5,
-              "curve": 0.3,
-              "composure": 0.2
+              "curve": 0.6,
+              "composure": 0.4
             },
-            "att_boost": [
-              "finishing"
-            ],
+            "att_boost": [],
             "def": {
               "standing_tackle": 0.6,
               "def_awareness": 0.4
@@ -639,7 +629,6 @@
               "dribbling": 0.5
             },
             "att_boost": [
-              "finishing",
               "dribbling"
             ],
             "def": {

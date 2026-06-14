@@ -34,8 +34,8 @@ from pathlib import Path
 # whether this file is run as a plain script or as a module.
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from src.load.v2_ingest.zone_battle import (load_cfgs, resolve_context,
-                                            load_player, find_squad, DB_PATH)
+from src.load.v2_ingest.zone_battle import (load_cfgs, resolve_context, load_player,
+                                            find_squad, _team_side_score, DB_PATH)
 
 N_BANDS, N_LANES = 6, 5                       # board geometry (item-1 zone grid)
 
@@ -188,6 +188,82 @@ def _resolve_xi(con, xi_names: dict, nation: str) -> tuple[dict, dict, dict]:
     return xi_ea, slot_to_sid, names
 
 
+# slot position_code -> coarse group (matches wc2026_squad.primary_position_group;
+# S27: wingers/CAM -> FWD, pivots -> MID).
+SLOT_GROUP = {
+    "GK": "GK",
+    "RB": "DEF", "RCB": "DEF", "CB": "DEF", "LCB": "DEF", "LB": "DEF",
+    "RWB": "DEF", "LWB": "DEF",
+    "DM": "MID", "CM": "MID", "RCM": "MID", "LCM": "MID", "RM": "MID", "LM": "MID",
+    "CAM": "FWD", "RW": "FWD", "LW": "FWD", "ST": "FWD", "FW": "FWD",
+    "RAM": "FWD", "LAM": "FWD",
+}
+
+
+def selection_scores(con, quality_w: float = 0.6) -> dict:
+    """squad_row_id -> selection score = quality_w * adjusted-role-rating(pct) +
+    (1-quality_w) * caps(pct within group). Quality is the empirical-adjusted role
+    rating (build()): DEF->Defense, FWD->Attack, MID->two-way(Possession+Defense).
+    Computed ONCE; young stars score high since thin-minutes adj ~= EA percentile."""
+    import numpy as np
+    from src.load.v2_ingest._probe_adjusted_ratings import build
+    df = build(con)[["squad_row_id", "grp", "adj_Attack", "adj_Possession",
+                     "adj_Defense"]].copy()
+    caps = dict(con.execute("SELECT squad_row_id, caps FROM wc2026_squad").fetchall())
+    df["caps"] = df["squad_row_id"].map(caps).fillna(0)
+    df["quality"] = np.select(
+        [df.grp == "DEF", df.grp == "FWD"],
+        [df.adj_Defense, df.adj_Attack],
+        default=0.5 * (df.adj_Possession + df.adj_Defense))
+    df["caps_pct"] = df.groupby("grp")["caps"].rank(pct=True) * 100
+    df["quality"] = df["quality"].fillna(df["caps_pct"])      # no adj -> lean on caps
+    df["score"] = quality_w * df["quality"] + (1 - quality_w) * df["caps_pct"]
+    return dict(zip(df["squad_row_id"], df["score"]))
+
+
+def autopick_xi(con, nation: str, formation: str = "4-3-3",
+                scores: dict | None = None) -> tuple[dict, dict, dict]:
+    """Greedy best-XI: each outfield slot -> top unused player in the slot's group by
+    `scores` (selection_scores: quality x caps blend), else raw caps. GK slot left
+    unfilled (parked board; GK handled separately for conversion). Falls back to any
+    remaining player if a group runs short.
+    -> (xi_ea {slot:ea_id}, slot_to_sid {slot:squad_row_id}, names {slot:name})."""
+    slots = con.execute(
+        "SELECT slot_no, position_code FROM formation_slots WHERE formation=? "
+        "ORDER BY slot_no", [formation]).fetchall()
+    rows = con.execute(
+        "SELECT s.squad_row_id, s.ea_id, s.player_name, s.primary_position_group, s.caps "
+        "FROM wc2026_squad s JOIN player_adjusted_attributes_wide w "
+        "ON w.squad_row_id = s.squad_row_id "
+        "WHERE s.nation_code=? AND s.primary_position_group IN ('DEF','MID','FWD')",
+        [nation]).fetchall()
+    key = (lambda r: scores.get(r[0], 0.0)) if scores else (lambda r: r[4] or 0)
+    rows = sorted(rows, key=key, reverse=True)
+    pools = {"DEF": [], "MID": [], "FWD": []}
+    for sid, ea, name, grp, _caps in rows:
+        pools[grp].append((sid, ea, name))
+    flat = [(sid, ea, name) for sid, ea, name, _, _ in rows]   # score-sorted fallback
+    used, xi_ea, slot_to_sid, names = set(), {}, {}, {}
+
+    def take(pool):
+        for sid, ea, name in pool:
+            if sid not in used:
+                used.add(sid)
+                return sid, ea, name
+        return None
+
+    for slot_no, pc in slots:
+        grp = SLOT_GROUP.get(pc)
+        if grp == "GK" or grp is None:
+            continue
+        pick = take(pools[grp]) or take(flat)
+        if pick is None:
+            continue                            # squad too small (shouldn't happen)
+        sid, ea, name = pick
+        xi_ea[slot_no], slot_to_sid[slot_no], names[slot_no] = ea, sid, name
+    return xi_ea, slot_to_sid, names
+
+
 def build_roster_from_board(con, board: dict, zone_id: int, slot_to_sid: dict,
                             p2f: dict, cache: dict) -> list:
     """One zone's [(player, occ)] roster from a team_boards() phase board.
@@ -215,8 +291,29 @@ def _fmt_grid(vals: dict, title: str, scale: float = 1.0, dec: int = 3):
 
 
 def load_zone_xt(con) -> dict:
-    """zone_id -> xt (attack-oriented positional value; B6-C peak ~0.143)."""
-    return dict(con.execute("SELECT zone_id, xt FROM zone_xt").fetchall())
+    """zone_id -> (xt, shot_share). xt = attack-oriented value (B6-C peak ~0.143);
+    shot_share = s*g/xt = the fraction of a zone's value that is IMMEDIATE shooting
+    (box ~0.75, deep ~0). Conversion (beat-the-keeper) scales only this fraction."""
+    out = {}
+    for zid, xt, s, g in con.execute(
+            "SELECT zone_id, xt, s, g FROM zone_xt").fetchall():
+        out[zid] = (xt, (s * g / xt) if xt > 0 else 0.0)
+    return out
+
+
+def load_gk_score(con, nation: str):
+    """Top-caps GK shot-stopping = mean(gk_diving, gk_handling, gk_positioning,
+    gk_reflexes) from raw EA (GKs have no adjusted attrs). -> (score, name)."""
+    r = con.execute(
+        "SELECT e.gk_diving, e.gk_handling, e.gk_positioning, e.gk_reflexes, "
+        "       s.player_name "
+        "FROM wc2026_squad s JOIN ea_fc26_player e ON e.ea_id = s.ea_id "
+        "WHERE s.nation_code=? AND s.primary_position_group='GK' "
+        "ORDER BY s.caps DESC LIMIT 1", [nation]).fetchone()
+    if not r:
+        return None, None
+    d, h, p, rfx, name = r
+    return (d + h + p + rfx) / 4.0, name
 
 
 def demo_real():
@@ -257,24 +354,43 @@ def demo_real():
     print("== ENG (4-3-3, attacking) vs NED (4-3-3, defending) -- beta=%.1f ==\n" % beta)
     _fmt_grid(threats, "ENG control prob per zone -- P(win) (B6 = NED's box):")
 
-    # --- step C: value-weight ---  value = entry_share * threat * zone_xt
+    # --- steps C + B: value-weight + conversion ---
+    # value = entry_share * P(win) * zone_xt * conv_factor
+    # conv_factor = (1 - shot_share) + shot_share * conv_rel  (conversion bites only
+    # on the shot fraction; conv_rel = 2*BT(finisher, GK), centred 1.0).
     zxt = load_zone_xt(con)
+    gk_score, gk_name = load_gk_score(con, "NED")        # ENG attacks NED's keeper
     occ = {z: sum(c["weight"] for c in eng_boards["attack"].get(z, []))
            for z in range(N_BANDS * N_LANES)}
-    occ_tot = sum(occ.values()) or 1.0           # ENG attack budget (~10.0)
-    value, index = {}, 0.0
+    occ_tot = sum(occ.values()) or 1.0                   # ENG attack budget (~10.0)
+
+    def conv_rel_for(roster):
+        # finisher quality = occ-weighted MEAN (beta=0; numbers already counted in
+        # P(win)) of finishing+shot_power, +Finishing family boost; vs the GK.
+        if not roster or not gk_score:
+            return 1.0
+        fin = _team_side_score(roster, {"finishing": 0.5, "shot_power": 0.5},
+                               ["finishing"], fmult, 0.0)
+        return 2.0 * fin / (fin + gk_score) if (fin + gk_score) > 0 else 1.0
+
+    value, index, conv = {}, 0.0, {}
     for z in range(N_BANDS * N_LANES):
         t = threats.get(z)
         if t is None:
             value[z] = None
             continue
-        value[z] = (occ[z] / occ_tot) * t * zxt[z]
+        xt_z, shot_share = zxt[z]
+        cr = conv_rel_for(build_roster_from_board(con, eng_boards["attack"], z,
+                                                  eng_sid, p2f, cache))
+        conv[z] = cr
+        conv_factor = (1.0 - shot_share) + shot_share * cr
+        value[z] = (occ[z] / occ_tot) * t * xt_z * conv_factor
         index += value[z]
-    print()
-    _fmt_grid(value, "ENG per-zone VALUE x1000 (entry_share x P(win) x zone_xt):",
+    print(f"\n  GK (NED): {gk_name}  shot-stopping={gk_score:.1f}\n")
+    _fmt_grid(value, "ENG per-zone VALUE x1000 (entry_share x P(win) x zone_xt x conv):",
               scale=1000.0, dec=3)
     print(f"\n  ENG attacking-value index (sum over zones) = {index:.5f}")
-    print("  (per attacking SEQUENCE; still pre-conversion [step B] & pre-VOLUME [step D])")
+    print("  (per attacking SEQUENCE; pre-VOLUME [step D])")
 
     # detail: the central box (zid 27) vs a wing (zid 29) -- watch the flip
     for zid, label in ((27, "central_L1 box"), (29, "wing_L1")):
@@ -292,10 +408,112 @@ def demo_real():
                                             gate, fmult, beta)
             sa, sd = sum(o for _, o in att), sum(o for _, o in dfn)
             es = occ[zid] / occ_tot
+            xt_z, shot_share = zxt[zid]
+            cr = conv_rel_for(att)
+            cf = (1.0 - shot_share) + shot_share * cr
             print(f"     Socc att={sa:.2f} def={sd:.2f}  P(win)={t:.3f}  |  "
-                  f"zone_xt={zxt[zid]:.4f}  entry_share={es:.4f}  ->  "
-                  f"VALUE={es * t * zxt[zid] * 1000:.3f} x1000")
+                  f"zone_xt={xt_z:.4f} shot_share={shot_share:.2f} conv_rel={cr:.3f}"
+                  f"  ->  VALUE={es * t * xt_z * cf * 1000:.3f} x1000")
     con.close()
+
+
+def demo_autoxi():
+    """Sanity-check the greedy best-XI selection on a few nations."""
+    import duckdb
+    con = duckdb.connect(str(DB_PATH), read_only=True)
+    scores = selection_scores(con)
+    for nat in ("ENG", "BRA", "FRA", "ARG", "ESP"):
+        _, _, names = autopick_xi(con, nat, "4-3-3", scores)
+        gk_score, gk_name = load_gk_score(con, nat)
+        xi = ", ".join(names[s] for s in sorted(names))
+        gk = f"{gk_name} ({gk_score:.0f})" if gk_name else "none"
+        print(f"  {nat} 4-3-3 (+GK {gk}):\n     {xi}")
+    con.close()
+
+
+def _assemble_team(con, nation, cfg, fwd, scores=None, formation="4-3-3"):
+    """Auto-pick XI -> assembled phase boards + GK. None if it can't assemble."""
+    from src.load.v2_ingest.formation_assembly import assemble, team_boards
+    xi_ea, sid, names = autopick_xi(con, nation, formation, scores)
+    if not sid:
+        return None
+    _, slots = assemble(con, formation, nation, cfg, fwd, xi=xi_ea)
+    gk_score, _ = load_gk_score(con, nation)
+    return {"nation": nation, "sid": sid, "boards": team_boards(slots), "gk": gk_score}
+
+
+def compute_attack_index(con, att, dfn, zxt, p2f, battle, gate, fmult, beta, cache):
+    """A's per-sequence attacking-value index vs B (the demo_real value math,
+    factored): sum_z entry_share * P(win) * zone_xt * conv_factor."""
+    ab = att["boards"]["attack"]
+    occ = {z: sum(c["weight"] for c in ab.get(z, [])) for z in range(N_BANDS * N_LANES)}
+    occ_tot = sum(occ.values()) or 1.0
+    gk = dfn["gk"]
+
+    def conv_rel(roster):
+        if not roster or not gk:
+            return 1.0
+        fin = _team_side_score(roster, {"finishing": 0.5, "shot_power": 0.5},
+                               ["finishing"], fmult, 0.0)
+        return 2.0 * fin / (fin + gk) if (fin + gk) > 0 else 1.0
+
+    index = 0.0
+    for z in range(N_BANDS * N_LANES):
+        att_r = build_roster_from_board(con, ab, z, att["sid"], p2f, cache)
+        if not att_r:
+            continue
+        def_r = build_roster_from_board(con, dfn["boards"]["defence"],
+                                        mirror_zone(z), dfn["sid"], p2f, cache)
+        key, ctx_name = fold_zone(z)
+        threat, *_ = resolve_context(att_r, def_r, battle["zones"][key][ctx_name],
+                                     gate, fmult, beta)
+        xt_z, shot_share = zxt[z]
+        cf = (1.0 - shot_share) + shot_share * conv_rel(att_r)
+        index += (occ[z] / occ_tot) * threat * xt_z * cf
+    return index
+
+
+def fit_volume(formation: str = "4-3-3", target: float = 1.178):
+    """Round-robin all nations -> attacking-value index distribution -> fit
+    VOLUME so mean(team_xG) = target (~1.18 xG/team-match). Reports the spread."""
+    import duckdb
+    import numpy as np
+    from src.load.v2_ingest.formation_assembly import load_config, compute_forwardness
+    battle, p2f = load_cfgs()
+    gate, fmult = battle["approach_gate"], battle["family_mult"]
+    beta = battle.get("aggregation_beta", 1.0)
+    con = duckdb.connect(str(DB_PATH), read_only=True)
+    cfg, fwd, zxt = load_config(), compute_forwardness(con), load_zone_xt(con)
+    scores = selection_scores(con)
+
+    nations = [r[0] for r in con.execute(
+        "SELECT DISTINCT nation_fifa3 FROM team_playstyle_blended ORDER BY 1").fetchall()]
+    cache, teams = {}, {}
+    for nat in nations:
+        try:
+            t = _assemble_team(con, nat, cfg, fwd, scores, formation)
+            if t:
+                teams[nat] = t
+        except SystemExit:
+            pass                                  # skip nations we can't assemble
+    idx = []
+    for a in teams:
+        for b in teams:
+            if a != b:
+                idx.append(compute_attack_index(con, teams[a], teams[b], zxt, p2f,
+                                                battle, gate, fmult, beta, cache))
+    con.close()
+    idx = np.array(idx)
+    VOLUME = target / idx.mean()
+    xg = idx * VOLUME
+    print(f"teams assembled: {len(teams)}/{len(nations)}   matchups: {len(idx)}")
+    print(f"index   mean {idx.mean():.5f}  std {idx.std(ddof=1):.5f}")
+    print(f"\nVOLUME = {target}/{idx.mean():.5f} = {VOLUME:.1f}\n")
+    print(f"team_xG  mean {xg.mean():.3f}  std {xg.std(ddof=1):.3f}  "
+          f"(targets: mean 1.18; effective std ~0.45, raw-xG std 0.73)")
+    pct = np.percentile(xg, [10, 25, 50, 75, 90])
+    print("team_xG  min %.2f | p10 %.2f p25 %.2f p50 %.2f p75 %.2f p90 %.2f | max %.2f"
+          % (xg.min(), *pct, xg.max()))
 
 
 def main():
@@ -303,6 +521,8 @@ def main():
     ap.add_argument("--demo", action="store_true", help="synthetic numbers test")
     ap.add_argument("--fold-table", action="store_true", help="print 30->9 fold")
     ap.add_argument("--demo-real", action="store_true", help="ENG vs NED real sweep")
+    ap.add_argument("--autoxi", action="store_true", help="validate greedy best-XI")
+    ap.add_argument("--fit-volume", action="store_true", help="round-robin VOLUME fit")
     a = ap.parse_args()
     if a.demo:
         demo()
@@ -310,8 +530,12 @@ def main():
         fold_table()
     elif a.demo_real:
         demo_real()
+    elif a.autoxi:
+        demo_autoxi()
+    elif a.fit_volume:
+        fit_volume()
     else:
-        print("try: --fold-table   or   --demo   or   --demo-real")
+        print("try: --fold-table | --demo | --demo-real | --autoxi | --fit-volume")
 
 
 if __name__ == "__main__":
