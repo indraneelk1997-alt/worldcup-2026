@@ -2,6 +2,8 @@
   "model_version": "zone_battle_v1",
   "_doc": "Item 7 zone battle (docs/item7_zone_battle.md). All 9 zones authored; central_L1 + wing_L1 tuned on real output, the other 7 reviewed via zone_battle_review.xlsx (S35). 'att' = in-possession side (attacker/builder), 'def' = out-of-possession (defender/presser). *_boost = EA PlayStyle families that multiply that side's attrs (best tier). Side score = weighted MEAN of its attrs (sum-invariant); per-duel Bradley-Terry; stage = weighted mean of duels; threat = main*(g + (1-g)*approach).",
   "approach_gate": 0.5,
+  "aggregation_beta": 1.0,
+  "_doc_aggregation_beta": "Item-8 occupancy overload exponent (docs/item8_aggregation.md, design A). Team side score = (Sum occ)^beta * occ-weighted-mean-quality. LOCKED 1.0 (S36): numerical overloads count linearly; a 2v1 should swing the contest. beta only bites under occupancy IMBALANCE (cancels in the BT ratio when both sides are balanced). Tunable end of the dial: beta=0 -> pure quality mean (numbers ignored).",
   "family_mult": {
     "base": 1.05,
     "plus": 1.1

@@ -10,7 +10,10 @@ EA PlayStyle families modestly multiply the attrs in the duels they touch.
 Design: docs/item7_zone_battle.md. Inputs: player_adjusted_attributes_wide (S29)
 + wc2026_squad (squad_row_id<->ea_id) + ea_fc26_playstyle + playstyle_families.json.
 
-This is the 1v1 core (occupancy-weighted aggregation over a zone is the next step).
+The resolver now takes per-side player rosters [(player, occ), ...] and combines
+them with the item-8 occupancy-weighted (Σocc)^beta sum (_team_side_score). The
+1v1 `--probe` passes a single-player roster at occ=1.0 -> reduces to the old
+_side_score exactly (regression-safe). Board sweep over a real zone is the next step.
 `--probe --attacker Kane --defender "Van Dijk"` resolves Central-L1.
 """
 from __future__ import annotations
@@ -86,25 +89,46 @@ def _side_score(player: dict, attr_w: dict, boost: list, fmult: dict) -> float:
     return m * sum(w * player["attrs"][a] for a, w in attr_w.items()) / tot
 
 
+def _team_side_score(players: list, attr_w: dict, boost: list,
+                     fmult: dict, beta: float) -> float:
+    """Occupancy-weighted combine over every player present in the zone
+    (item-8 design A). `players` = list of (player_dict, occ).
+
+        side = (Σ occ)^beta · [ Σ occ·q / Σ occ ]
+               └ numbers ┘      └ occ-weighted mean quality ┘
+        q = per-player _side_score (quality, incl. that player's family_mult).
+
+    beta=1 -> the item-7 doc's literal Σ occ·q sum (overloads count linearly);
+    beta=0 -> pure quality mean (numbers discarded). Default beta=1.
+    The 1v1 case [(p, 1.0)] reduces to _side_score(p) exactly -> regression-safe."""
+    occ_tot = sum(occ for _, occ in players)
+    if occ_tot <= 0:
+        return 0.0
+    wq = sum(occ * _side_score(p, attr_w, boost, fmult) for p, occ in players)
+    return (occ_tot ** beta) * (wq / occ_tot)
+
+
 def _bt(a: float, d: float) -> float:
     return a / (a + d) if (a + d) > 0 else 0.5
 
 
-def resolve_stage(att, dfn, duels, fmult):
+def resolve_stage(att_players, dfn_players, duels, fmult, beta):
+    # att_players / dfn_players: list of (player_dict, occ). The 1v1 caller
+    # passes [(player, 1.0)]; the board sweep (next step) passes the zone roster.
     tot_w = sum(d["w"] for d in duels)
     p, rows = 0.0, []
     for d in duels:
-        a = _side_score(att, d["att"], d.get("att_boost", []), fmult)
-        v = _side_score(dfn, d["def"], d.get("def_boost", []), fmult)
+        a = _team_side_score(att_players, d["att"], d.get("att_boost", []), fmult, beta)
+        v = _team_side_score(dfn_players, d["def"], d.get("def_boost", []), fmult, beta)
         pd = _bt(a, v)
         p += d["w"] * pd
         rows.append((d["name"], d["w"], a, v, pd))
     return p / tot_w, rows
 
 
-def resolve_context(att, dfn, ctx, gate, fmult):
-    ap, ap_rows = resolve_stage(att, dfn, ctx["approach"], fmult)
-    mn, mn_rows = resolve_stage(att, dfn, ctx["main"], fmult)
+def resolve_context(att_players, dfn_players, ctx, gate, fmult, beta=1.0):
+    ap, ap_rows = resolve_stage(att_players, dfn_players, ctx["approach"], fmult, beta)
+    mn, mn_rows = resolve_stage(att_players, dfn_players, ctx["main"], fmult, beta)
     threat = mn * (gate + (1.0 - gate) * ap)
     return threat, ap, mn, ap_rows, mn_rows
 
@@ -116,7 +140,10 @@ def probe(attacker: str, defender: str, zone: str, context: str):
     dfn = load_player(con, find_squad(con, defender), p2f)
     ctx = battle["zones"][zone][context]
     gate, fmult = battle["approach_gate"], battle["family_mult"]
-    threat, ap, mn, ap_rows, mn_rows = resolve_context(att, dfn, ctx, gate, fmult)
+    beta = battle.get("aggregation_beta", 1.0)          # safe default if key absent
+    att_players, dfn_players = [(att, 1.0)], [(dfn, 1.0)]   # 1v1 = degenerate board
+    threat, ap, mn, ap_rows, mn_rows = resolve_context(
+        att_players, dfn_players, ctx, gate, fmult, beta)
 
     print(f"== {zone} / {context} ==  approach_gate={gate}")
     print(f"  ATT  {att['name']} ({att['nation']}, {att['pos']})  "

@@ -3,15 +3,116 @@
 > **Fast-changing.** This is "where we are right now." Updated at the end
 > of each working session. For permanent facts/rules, see `Claude.md`.
 
-**Last updated:** end of S35 (2026-06-13)
-**Current version line:** **Chessboard IMPLEMENTATION — items 1–7 DONE (all 9 zones
-authored).** Item 7 zone-battle now covers all **9 zones** (3 lane × 3 level, 4
-profiles, 66 duels) in `zone_battle.json`, validated on real players. All lazy pure
-functions (decision B; no tables). DB unchanged at **41 base tables**. Pipeline spans
-occupancy → SHIFT/TWEAK → team boards → class-clean two-stage zone battle → threat.
-Remaining: **wire occupancy-weighted zone aggregation** (battle is 1v1 so far), THEN
-design **item 8** (value-weight by `zone_xt` + possession-blend → xG; carry offside
-gate + transition term, both banked).
+**Last updated:** end of S36 (2026-06-14)
+**Current version line:** **Chessboard item 8 — aggregation IN PROGRESS.** Items 1–7
+DONE. Item 8 steps **A (occupancy-weighted β-sum aggregation; β=1 locked)** + **C
+(zone_xt value-weight)** + **D-anchor (measured ~1.18 xG/team-match)** built &
+validated on real ENG-vs-NED. DB unchanged at **41 base tables** (item-8 layer is
+read-only orchestration; no DDL). Pipeline now: occupancy → SHIFT/TWEAK → team boards
+→ class-clean zone battle → **β-sum team aggregation → zone_xt value surface**.
+Remaining for xScoreline: **B (conversion + GK), D-fit (VOLUME constant), E (bivariate
+Poisson)**. Design doc: `docs/item8_aggregation.md`.
+
+## S36 outcome — item 8 aggregation (steps A + C) + VOLUME anchor measured
+
+Implementation session, shell-relay throughout. Built the occupancy-weighted aggregation
+that lifts the item-7 1v1 zone battle to a per-zone **team** contest, value-weighted it by
+`zone_xt`, and measured the empirical VOLUME anchor. Design doc: **`docs/item8_aggregation.md`**
+(written this session, end-to-end: A aggregation → B conversion/GK → C zone_xt → D VOLUME →
+E bivariate Poisson; with the finishing double-count fork + v2 supply-chain banked).
+
+### Step A — occupancy-weighted β-sum aggregation (DONE)
+- `zone_battle.py`: new **`_team_side_score`** — side = `(Σ occ)^β · occ-weighted-mean-quality`.
+  `resolve_stage`/`resolve_context` now take per-side rosters `[(player, occ), …]`; the 1v1
+  `--probe` passes a 1-player roster → reduces to the old `_side_score` exactly (**regression:
+  Kane vs Van Dijk 0.388 unchanged**).
+- **β = 1 LOCKED** (overloads count linearly; only bites under occupancy *imbalance* — cancels
+  in the BT ratio when balanced). Explicit in `zone_battle.json` (`aggregation_beta` + `_doc`).
+- New **`src/load/v2_ingest/zone_aggregate.py`**: `fold_zone` (30 board cells → 9 authored
+  zones + context, mirror-fold, validated all-30 in-config), `mirror_zone` (directional
+  pairing), `build_roster_from_board` (loads `(player, occ)` from item-6 boards), `--demo`
+  (synthetic β test: a 2nd identical defender drops threat at β=1, unchanged at β=0),
+  `--demo-real` (ENG vs NED, both 4-3-3).
+- **Validated on real ENG-vs-NED sweep:** threat surface concentrates in attacking third,
+  wings easy to control (0.74) / central box congested (0.35) — "attack where they're thin"
+  emerges from β. NED defence board reads as a textbook compact block (central spine packed,
+  deep wide corners conceded). **Bug caught + fixed:** `find_squad` is nation-agnostic +
+  loose-substring (`'lang'`→Elanga); added nation-scoped `_resolve_xi`.
+
+### Step C — zone_xt value-weight (DONE)
+- `value_z = entry_share_z · P(win)_z · zone_xt_z`; `entry_share` = ENG attack-occupancy
+  distribution (normalised). **The control→value flip works:** wing P(win) 0.74 × xt 0.022 →
+  VALUE 0.83; box P(win) 0.35 × xt 0.143 → VALUE 1.94. Easy-but-cheap wing control correctly
+  collapses; value peaks at B6-central. ENG attacking-value index = **0.00853** (per sequence,
+  pre-conversion, pre-VOLUME).
+- Banked calibration note: B6 wings slightly edge B6 half-spaces on value — half-space `zone_xt`
+  / cross-vs-cutback weighting wants a look vs StatsBomb.
+
+### Step D-anchor — VOLUME target measured (DONE)
+From `statsbomb_event` (period<5, 398 team-matches): **xG/team-match = 1.18 overall, tight
+1.14–1.22 across all 4 tournaments** → a single global VOLUME constant is justified. goals/tm
+1.156 (→2.31/match; encoding validated), shots/tm 11.8, seqs/tm 84 (raw possessions). Full
+table + notes in `item8_aggregation.md` step D. **VOLUME is a fitted constant** (fit on the
+*average*-team index, ~conversion-invariant since `conv_rel` centres at 1.0), NOT `seqs_pm`.
+
+### Files (S36, uncommitted until the commit below)
+- New: `docs/item8_aggregation.md`, `src/load/v2_ingest/zone_aggregate.py`.
+- Modified: `src/load/v2_ingest/zone_battle.py` (team-roster seam + `_team_side_score`),
+  `data/config/zone_battle.json` (`aggregation_beta`), `docs/session_state.md`.
+- **No DDL** — item-8 layer is read-only orchestration; `db_schema.md` unchanged at 41 tables.
+
+### S37 openers
+1. **Step B — conversion + GK.** Finisher-vs-GK *relative* multiplier (centred 1.0; re-scales
+   zone_xt's baked-in avg conversion). Resolve the **finishing double-count fork** (duel = beat
+   the block; conversion = beat the keeper). GK's first real role = shot-stopping.
+2. **Step D-fit + E.** Run the sweep across many teams → average-team index → fit VOLUME to
+   ~1.18 xG/tm; modulate by possession/directness. Then **bivariate Poisson** (md38) → scoreline.
+3. **xG variance / outliers (NEW, S36 maintainer).** Tight *mean* ≠ tight *spread*. Measure the
+   **distribution** of team-match xG (std, tails: 3+ xG demolitions vs 0.3 no-shows) AND the
+   **`goals − xG`** distribution (finishing variance, smash-and-grabs, dominant draws). Check
+   our per-team index spreads as wide as reality; if Poisson underproduces blowouts/upsets, add
+   overdispersion. Guards against the sim forcing everything to 1-1/2-1.
+4. **Mistake/negative events (NEW, S36 maintainer).** Miscontrol / Dispossessed (×`under_pressure`,
+   a column we have) / Foul Won/Committed / Dribbled Past are **underused**. → feed the banked
+   **transition/turnover term** (S32; 56% of open-play goals turnover-sparked) + **calibrate the
+   `buildup_vs_pressure` contest** against real loss-under-press rates; fouls → set-piece overlay.
+   Insight: duels currently price *winning* but never *error probability* — add it.
+5. **Per-player empirical kernels vs tweaked kernels (NEW, S36 maintainer).** For strong-playstyle
+   players (Rapid winger, Relentless box-to-box, Press Proven presser, inverted FB) build the
+   *actual* StatsBomb occupancy kernel on the 6×5 grid (attack=on-ball, defence=def-actions) and
+   check `empirical − position_average` matches the **direction + magnitude** of item-4/5
+   SHIFT/TWEAK. Cleanest validation that the kernel tweaking worked. Self-contained.
+6. Middle-third (L3) pairing nuance; GK build-up track; set-piece overlay; calibrate β /
+   `approach_gate` / family-mult / `entry_share` vs StatsBomb.
+
+### S36 commit
+```
+S36: item 8 aggregation (steps A + C) + VOLUME anchor measured
+
+Lifted the item-7 1v1 zone battle to a per-zone TEAM contest and value-weighted it.
+
+Step A (zone_battle.py + zone_aggregate.py): _team_side_score = (sum occ)^beta *
+occ-weighted-mean-quality; resolve_* now take per-side rosters [(player, occ)]; 1v1
+probe reduces exactly (Kane vs Van Dijk 0.388 unchanged). beta=1 LOCKED (overloads
+count; only bites under imbalance), explicit in zone_battle.json. zone_aggregate.py:
+fold_zone (30->9 + context), mirror_zone (directional pairing), build_roster_from_board,
+synthetic --demo + real --demo-real (ENG vs NED). Validated: wings easy to control /
+box congested, compact NED block. Fixed nation-agnostic name resolution (_resolve_xi).
+
+Step C: value = entry_share * P(win) * zone_xt. Control->value flip works (wing 0.74
+control -> 0.83 value; box 0.35 -> 1.94). ENG attacking-value index 0.00853/sequence.
+
+Step D-anchor: measured xG/team-match = 1.18 (tight 1.14-1.22 across WC22/Euro24/
+Copa24/AFCON23; 398 team-matches) -> single global VOLUME justified. goals/shots/seqs
+cross-checks recorded.
+
+New:  docs/item8_aggregation.md, src/load/v2_ingest/zone_aggregate.py
+Modified: src/load/v2_ingest/zone_battle.py, data/config/zone_battle.json,
+          docs/session_state.md
+(No DDL -- read-only orchestration; db_schema.md unchanged at 41 tables.)
+
+Refs: docs/item8_aggregation.md, docs/session_state.md
+```
 
 ## S35 outcome — item 7 fully authored (all 9 zones) + Excel review workflow
 
