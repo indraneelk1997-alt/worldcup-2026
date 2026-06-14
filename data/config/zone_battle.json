@@ -4,6 +4,8 @@
   "approach_gate": 0.5,
   "aggregation_beta": 1.0,
   "_doc_aggregation_beta": "Item-8 occupancy overload exponent (docs/item8_aggregation.md, design A). Team side score = (Sum occ)^beta * occ-weighted-mean-quality. LOCKED 1.0 (S36): numerical overloads count linearly; a 2v1 should swing the contest. beta only bites under occupancy IMBALANCE (cancels in the BT ratio when both sides are balanced). Tunable end of the dial: beta=0 -> pure quality mean (numbers ignored).",
+  "volume": 199.4,
+  "_doc_volume": "Item-8 step D calibration constant (docs/item8_aggregation.md, design D+E). lambda_mean = volume * attack_index. Fitted S37 on the all-48 round-robin so mean(team_xG) = 1.178 (= 1.178/0.00591). Feeds bivariate Poisson (step E) at the FULL index spread (std ~0.588) -- no shrinkage toward the 0.45 effective-rate target (LOCKED S38: 48-team format expects a fatter mismatch tail). Re-fit via --fit-volume if the index machinery changes.",
   "family_mult": {
     "base": 1.05,
     "plus": 1.1

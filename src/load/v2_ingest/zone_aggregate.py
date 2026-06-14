@@ -516,6 +516,144 @@ def fit_volume(formation: str = "4-3-3", target: float = 1.178):
           % (xg.min(), *pct, xg.max()))
 
 
+# ----------------------------------------------------------------------------
+# (E) Scoreline -- bivariate Poisson (docs/item8_aggregation.md, design E).
+# lambda_mean = volume * attack_index; X=Y1+Y3, Y=Y2+Y3, Yi~Pois independent.
+# ----------------------------------------------------------------------------
+def bivariate_poisson_matrix(l1, l2, l3=0.0, max_goals=10):
+    """Joint P(X=x, Y=y) for X=Y1+Y3, Y=Y2+Y3, Yi~Pois(li) independent
+    (Karlis-Ntzoufras). l1,l2 are the INDEPENDENT components (= lambda_mean - l3),
+    l3 the shared covariance term. l3=0 -> product of two independent Poissons.
+    Truncated at max_goals each, renormalised. docs/item8_aggregation.md (E)."""
+    import numpy as np
+    import math
+
+    def pois(lam):
+        k = np.arange(max_goals + 1)
+        if lam <= 0:                              # degenerate: all mass at 0
+            p = np.zeros(max_goals + 1); p[0] = 1.0; return p
+        fact = np.array([math.factorial(int(i)) for i in k], float)
+        return np.exp(-lam) * lam ** k / fact
+
+    p1, p2, p3 = pois(l1), pois(l2), pois(l3)
+    M = np.zeros((max_goals + 1, max_goals + 1))
+    for x in range(max_goals + 1):
+        for y in range(max_goals + 1):
+            M[x, y] = sum(p3[k] * p1[x - k] * p2[y - k]
+                          for k in range(min(x, y) + 1))
+    return M / M.sum()                            # renormalise the truncated tail
+
+
+def _matrix_summary(M):
+    """W/D/L, expected goals, most-likely scoreline from a scoreline matrix
+    (rows = home/X goals, cols = away/Y goals)."""
+    import numpy as np
+    gx = np.arange(M.shape[0])
+    px, py = M.sum(axis=1), M.sum(axis=0)
+    x, y = np.unravel_index(np.argmax(M), M.shape)
+    return {"p_home": float(np.tril(M, -1).sum()),    # X > Y
+            "p_draw": float(np.trace(M)),
+            "p_away": float(np.triu(M, 1).sum()),      # Y > X
+            "eg_home": float((gx * px).sum()),
+            "eg_away": float((gx * py).sum()),
+            "ml_score": (int(x), int(y)), "ml_p": float(M[x, y])}
+
+
+def _scoreline_setup(formation):
+    """Shared load: configs + read-only DB handle + derived inputs. Returns
+    (con, packed) where packed bundles everything compute_attack_index needs."""
+    import duckdb
+    from src.load.v2_ingest.formation_assembly import load_config, compute_forwardness
+    battle, p2f = load_cfgs()
+    con = duckdb.connect(str(DB_PATH), read_only=True)
+    packed = dict(battle=battle, p2f=p2f, gate=battle["approach_gate"],
+                  fmult=battle["family_mult"], beta=battle.get("aggregation_beta", 1.0),
+                  volume=battle.get("volume", 199.4), cfg=load_config(),
+                  fwd=compute_forwardness(con), zxt=load_zone_xt(con),
+                  scores=selection_scores(con), cache={})
+    return con, packed
+
+
+def _lambda_pair(con, ta, tb, P):
+    """Both lambda-means for the matchup A vs B (volume * attack index each way)."""
+    ia = compute_attack_index(con, ta, tb, P["zxt"], P["p2f"], P["battle"],
+                              P["gate"], P["fmult"], P["beta"], P["cache"])
+    ib = compute_attack_index(con, tb, ta, P["zxt"], P["p2f"], P["battle"],
+                              P["gate"], P["fmult"], P["beta"], P["cache"])
+    return P["volume"] * ia, P["volume"] * ib
+
+
+def demo_scoreline(nation_a="ESP", nation_b="ENG", formation="4-3-3", l3=0.0):
+    """Assemble both XIs -> lambda-means -> bivariate-Poisson scoreline matrix.
+    Face-validity probe for step E."""
+    con, P = _scoreline_setup(formation)
+    try:
+        ta = _assemble_team(con, nation_a, P["cfg"], P["fwd"], P["scores"], formation)
+        tb = _assemble_team(con, nation_b, P["cfg"], P["fwd"], P["scores"], formation)
+    except SystemExit as e:
+        con.close(); sys.exit(str(e))
+    if not ta or not tb:
+        con.close(); sys.exit(f"could not assemble {nation_a if not ta else nation_b}")
+    lam_a, lam_b = _lambda_pair(con, ta, tb, P)
+    con.close()
+    l1, l2 = max(lam_a - l3, 0.0), max(lam_b - l3, 0.0)
+    M = bivariate_poisson_matrix(l1, l2, l3)
+    s = _matrix_summary(M)
+    print(f"\n{nation_a} vs {nation_b}  (formation {formation}, lambda3={l3})")
+    print(f"lambda-mean:  {nation_a} {lam_a:.3f}   {nation_b} {lam_b:.3f}")
+    print(f"P(win) {nation_a} {s['p_home']*100:.1f}% | draw {s['p_draw']*100:.1f}% | "
+          f"{nation_b} {s['p_away']*100:.1f}%")
+    print(f"most-likely {s['ml_score'][0]}-{s['ml_score'][1]} (p={s['ml_p']*100:.1f}%)  "
+          f"E[goals] {s['eg_home']:.2f}-{s['eg_away']:.2f}")
+    print(f"\nscoreline %  (rows={nation_a} goals, cols={nation_b} goals), 0..5:")
+    print("      " + "".join(f"{c:>7}" for c in range(6)))
+    for x in range(6):
+        print(f"  {x}: " + "".join(f"{M[x, y]*100:7.1f}" for y in range(6)))
+
+
+def validate_scoreline(formation="4-3-3", l3=0.0):
+    """Round-robin all assemblable nations -> aggregate team-match goal pmf +
+    mean draw rate vs the empirical S37 acceptance test."""
+    import numpy as np
+    con, P = _scoreline_setup(formation)
+    nations = [r[0] for r in con.execute(
+        "SELECT DISTINCT nation_fifa3 FROM team_playstyle_blended ORDER BY 1").fetchall()]
+    teams = {}
+    for nat in nations:
+        try:
+            t = _assemble_team(con, nat, P["cfg"], P["fwd"], P["scores"], formation)
+            if t:
+                teams[nat] = t
+        except SystemExit:
+            pass
+    max_goals, goals, draws, n = 10, np.zeros(11), [], 0
+    for a in teams:
+        for b in teams:
+            if a == b:
+                continue
+            lam_a, lam_b = _lambda_pair(con, teams[a], teams[b], P)
+            l1, l2 = max(lam_a - l3, 0.0), max(lam_b - l3, 0.0)
+            M = bivariate_poisson_matrix(l1, l2, l3, max_goals)
+            goals += M.sum(axis=1)                # team A's marginal goal pmf
+            draws.append(np.trace(M))
+            n += 1
+    con.close()
+    goals /= n
+    k = np.arange(max_goals + 1)
+    mean = (k * goals).sum()
+    var = ((k - mean) ** 2 * goals).sum()
+    emp = np.array([134, 138, 81, 30, 9, 6], float); emp /= emp.sum()
+    print(f"teams {len(teams)}/{len(nations)}   matchups {n}   lambda3={l3}")
+    print(f"team-match goals: mean {mean:.3f}  var {var:.3f}  var/mean {var/mean:.3f}"
+          f"   (empirical 1.18; predicted ~1.29 at full 0.588 spread)")
+    print(f"mean draw rate {np.mean(draws)*100:.1f}%   (empirical intl ~25-28%)")
+    print("\ngoals    model   empirical")
+    for g in range(6):
+        m = goals[g] if g < 5 else goals[5:].sum()
+        lbl = f"{g}+" if g == 5 else f"{g} "
+        print(f"  {lbl}    {m*100:5.1f}%   {emp[g]*100:5.1f}%")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--demo", action="store_true", help="synthetic numbers test")
@@ -523,6 +661,12 @@ def main():
     ap.add_argument("--demo-real", action="store_true", help="ENG vs NED real sweep")
     ap.add_argument("--autoxi", action="store_true", help="validate greedy best-XI")
     ap.add_argument("--fit-volume", action="store_true", help="round-robin VOLUME fit")
+    ap.add_argument("--scoreline", nargs=2, metavar=("A", "B"),
+                    help="demo bivariate-Poisson scoreline, FIFA3 A vs B")
+    ap.add_argument("--validate-scoreline", action="store_true",
+                    help="round-robin goals-dist + draw-rate vs empirical")
+    ap.add_argument("--l3", type=float, default=0.0,
+                    help="bivariate-Poisson covariance term (default 0)")
     a = ap.parse_args()
     if a.demo:
         demo()
@@ -534,8 +678,13 @@ def main():
         demo_autoxi()
     elif a.fit_volume:
         fit_volume()
+    elif a.scoreline:
+        demo_scoreline(a.scoreline[0], a.scoreline[1], l3=a.l3)
+    elif a.validate_scoreline:
+        validate_scoreline(l3=a.l3)
     else:
-        print("try: --fold-table | --demo | --demo-real | --autoxi | --fit-volume")
+        print("try: --fold-table | --demo | --demo-real | --autoxi | --fit-volume "
+              "| --scoreline A B | --validate-scoreline")
 
 
 if __name__ == "__main__":

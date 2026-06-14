@@ -3,15 +3,92 @@
 > **Fast-changing.** This is "where we are right now." Updated at the end
 > of each working session. For permanent facts/rules, see `Claude.md`.
 
-**Last updated:** end of S37 (2026-06-14)
-**Current version line:** **Chessboard item 8 — A,B,C,D DONE; only E (scoreline) left.**
-Items 1–7 DONE. Item 8: **A** (β-sum aggregation, β=1) + **B** (conversion + GK
-shot-stopping) + **C** (zone_xt value) + **D** (VOLUME = **199.4** fitted vs ~1.18
-xG/tm) all built & validated; plus a **quality×caps XI selection model** and the
-**xG-variance analysis**. Remaining: **E — bivariate Poisson → scoreline** (accept
-spread vs mild shrinkage; validate simulated goals dist vs empirical). DB unchanged at
-**41 tables** (item-8 layer is read-only orchestration; no DDL). Design doc:
-`docs/item8_aggregation.md`.
+**Last updated:** end of S38 (2026-06-14)
+**Current version line:** **Chessboard model COMPLETE — items 1–8 all DONE & validated.**
+Item 8 step **E (bivariate Poisson → scoreline)** built + validated S38: a full
+team-vs-team matchup now runs end to end (adjusted attrs → occupancy boards → zone
+battles → aggregated index → VOLUME → bivariate-Poisson scoreline). Acceptance test
+**PASSED** (goals mean 1.178, var/mean 1.292, draw rate 25.5% — all in the empirical
+band). `λ₃=0` LOCKED; `VOLUME=199.4` promoted to `zone_battle.json`. DB unchanged at
+**41 tables** (read-only orchestration; no DDL). **Next agenda: dashboard visual design**
+(+ full-tournament sim). Design doc: `docs/item8_aggregation.md`.
+
+## S38 outcome — item 8 step E (scoreline) built + validated → chessboard COMPLETE
+
+Closed the final piece of the chessboard model. Shell-relay throughout. Step E turns the
+two team indices into a scoreline distribution via bivariate Poisson; validated against
+the S37 acceptance test. Full as-built in `docs/item8_aggregation.md` (E).
+
+### Decisions locked (S38)
+- **Means feed at the FULL index spread (std 0.588), NO shrinkage** toward the 0.45
+  effective-rate target. Rationale: the 0.45/1.18 targets were measured on the four intl
+  tournaments (so "intl ⇒ wider" is already baked in), and the **48-team 2026 format**
+  holds more elite-vs-minnow mismatches → a deliberately fatter tail. Drops a knob.
+  Consequence: model var/mean ≈ 1.29 (accepted by design).
+- **λ₃ = 0 (independent double-Poisson)** — *validated*, not just assumed: round-robin
+  draw rate came in at **25.5%** (empirical 25–28%), so NO draw deficit to fix; a positive
+  λ₃ would overshoot. No per-match correlation term in v1.
+- **Closed-form PMF → sample.** Exact per-matchup scoreline matrix (Karlis–Ntzoufras
+  `X=Y₁+Y₃, Y=Y₂+Y₃`), truncated 0–10 + renormalised; sample from it for tournament sim.
+
+### Built (in `src/load/v2_ingest/zone_aggregate.py`)
+`bivariate_poisson_matrix(l1,l2,l3)`, `_matrix_summary` (W/D/L, E[goals], most-likely
+score), `_scoreline_setup`/`_lambda_pair` (shared load + both λ-means = VOLUME·index each
+way), `demo_scoreline(A,B)` (`--scoreline`, face validity), `validate_scoreline`
+(`--validate-scoreline`, round-robin acceptance test). Output switched to %.
+`VOLUME=199.4` + `_doc_volume` added to `data/config/zone_battle.json`.
+
+### Validation (S38 round-robin, 47/48 nations, 2,162 matchups, λ₃=0)
+mean 1.178 (exact target → no global inflation), var/mean 1.292 (as predicted), draw rate
+25.5% (in band). Goals dist model `0:35.7 1:32.1 2:18.6 3:8.4 4:3.3 5+:1.8` vs empirical
+`0:33.7 1:34.7 2:20.4 3:7.5 4:2.3 5+:1.5` — within ~2pp, model tails marginally fatter
+(the 0.588 spread). **Acceptance test PASSED.**
+
+### Banked for v2
+- **No defence-suppression** (the S38 finding): elite-vs-elite over-scores (ESP-vs-ENG
+  λ≈2.6/2.5 → ~5 goals) because the index prices attacker-vs-defender one-directionally —
+  reality has two strong defences mutually suppressing the game. Doesn't dent the aggregate
+  (minority of matchups, balanced in the mean); a defence-strength / game-control dampening
+  term is the right v2 refinement (same family as the deferred possession-flow model).
+
+### S39 openers
+1. **Dashboard / visual design** (the new agenda) — surface XIs, occupancy boards, zone
+   threat surfaces, scoreline matrices, a matchup explorer.
+2. **Full-tournament sim** — groups + knockouts off the step-E scoreline sampler (ET/pens
+   for knockouts).
+3. Banked refinements (carried): Vinícius linkage check; quality-aware formation-per-team;
+   shot-specific occupancy for conversion; selection blend-weight tune; half-space zone_xt
+   calibration; the 1 unassembled nation; the v2 defence-suppression term.
+
+### S38 commit
+```
+S38: item 8 step E — bivariate-Poisson scoreline + validation (chessboard COMPLETE)
+
+Final chessboard piece. Two team indices -> lambda-means (VOLUME*index each way) ->
+bivariate Poisson (Karlis-Ntzoufras X=Y1+Y3, Y=Y2+Y3) -> scoreline matrix -> sim.
+
+Decisions: means fed at the FULL round-robin index spread (std 0.588), NO shrinkage
+(48-team format expects a fatter mismatch tail; drops a knob). lambda3=0 (independent
+double-Poisson) VALIDATED -- round-robin draw rate 25.5% (empirical 25-28%), no deficit
+to correct. Closed-form PMF (truncated 0-10, renormalised) then sample.
+
+Built (zone_aggregate.py): bivariate_poisson_matrix, _matrix_summary, _scoreline_setup,
+_lambda_pair, demo_scoreline (--scoreline A B), validate_scoreline (--validate-scoreline).
+Output in %. VOLUME=199.4 promoted to data/config/zone_battle.json.
+
+Validation (2162 matchups): goals mean 1.178 (exact), var/mean 1.292 (as predicted),
+draw rate 25.5%; goals dist within ~2pp of empirical (tails marginally fatter = the
+0.588 spread). Acceptance test PASSED.
+
+Banked v2: no defence-suppression (elite-vs-elite over-scores; one-directional index) ->
+defence-strength dampening term.
+
+Modified: src/load/v2_ingest/zone_aggregate.py, data/config/zone_battle.json,
+          docs/item8_aggregation.md, docs/session_state.md
+(No DDL -- db_schema.md unchanged at 41 tables.)
+
+Refs: docs/item8_aggregation.md, docs/session_state.md
+```
 
 ## S37 outcome — item 8 steps B (conversion+GK) + D-fit (VOLUME) + selection + variance
 

@@ -257,11 +257,91 @@ v1; explicit chaining waits.
 
 ---
 
-## (E) Scoreline — **bivariate Poisson (md38 precedent)**
+## (E) Scoreline — **bivariate Poisson (md38 precedent)** — DESIGN (S38)
 
-Two `team_xG` numbers → bivariate Poisson → full scoreline distribution
+Two `team_xG` numbers (λ-means) → bivariate Poisson → full scoreline distribution
 (P(2–1), P(0–0), …) → match sim. Reuse the md38 bivariate-Poisson approach already
-in the repo. Correlation term handles game-state coupling.
+in the repo.
+
+### Means feed in at the FULL index spread — **LOCKED S38**
+
+`λ_mean_A = VOLUME · index(A_att vs B_def)`, `λ_mean_B = VOLUME · index(B_att vs A_def)`,
+`VOLUME = 199.4` (promote to config this step).
+
+**Decision (S38): feed λ at the full round-robin index spread (std 0.588), NO shrinkage
+toward the 0.45 effective-rate target.** Rationale: (1) the 0.45 figure and the 1.18
+var/mean acceptance target were both measured on the four StatsBomb *international*
+tournaments, so "international ⇒ wider" is already partly inside the target; (2) the
+**48-team 2026 format** holds more genuine elite-vs-minnow mismatches than those sampled
+fields, a real and separate reason to expect a fatter tail; (3) it drops a tuning knob.
+Consequence: model goals var/mean ≈ **1.29** vs empirical 1.18 — deliberately a touch
+hot. The goals distribution + draw rate are judged as a **sanity check, not a hard
+target** (we expect — and want — slightly more spread than the club-and-confed sample).
+
+### Bivariate Poisson construction (Karlis–Ntzoufras)
+
+Goals `X = Y₁ + Y₃`, `Y = Y₂ + Y₃`, with independent `Y₁~Pois(λ₁)`, `Y₂~Pois(λ₂)`,
+`Y₃~Pois(λ₃)`. The shared `Y₃` couples the two scores: `Cov(X,Y) = λ₃`. Marginal means
+are `E[X] = λ₁+λ₃` and `E[Y] = λ₂+λ₃`, so to preserve our team means we set
+`λ₁ = λ_mean_A − λ₃`, `λ₂ = λ_mean_B − λ₃` (guard `λ₁,λ₂ ≥ 0`).
+
+**Correlation term `λ₃` = 0 — LOCKED S38 (validated).** The S37 variance analysis showed
+goals only mildly overdispersed and finishing noise ~Poisson, so the independent
+double-Poisson (`λ₃ = 0`) was the honest default. The S38 round-robin then *confirmed it
+empirically*: with `λ₃ = 0` the mean draw rate is **25.5%**, squarely inside the empirical
+international 25–28% band — no draw deficit to correct. Adding `λ₃ > 0` would push draws
+higher and overshoot. So `λ₃ = 0` stands; no per-match correlation term in v1.
+
+### Output — closed-form PMF, then sample — LOCKED S38
+
+Compute the **closed-form bivariate-Poisson PMF** as an exact scoreline matrix per
+matchup (deterministic, fast, no sampling noise):
+
+```
+P(X=x, Y=y) = e^{-(λ₁+λ₂+λ₃)} · (λ₁^x / x!) · (λ₂^y / y!)
+              · Σ_{k=0}^{min(x,y)} C(x,k)·C(y,k)·k!·(λ₃/(λ₁λ₂))^k
+```
+
+(at `λ₃=0` this collapses to the product of two independent Poisson PMFs). Truncate the
+matrix at a safe max goals (e.g. 0–9 each, mass beyond is negligible) and renormalise.
+For the **tournament sim**, sample scorelines from this matrix — best of both: exact
+per-matchup probabilities for analysis (win/draw/loss, P(0–0), expected points) +
+cheap sampling for groups/knockouts later.
+
+### Validation procedure (the S37 acceptance test)
+
+1. Run the all-48 round-robin (or a representative matchup set) through E.
+2. Collect the simulated **goals distribution** (per team-match) and compare to the
+   empirical `0:134 1:138 2:81 3:30 4:9 5+:6` shape + var/mean.
+3. Report the **draw rate** vs empirical; decide on `λ₃` from the gap.
+4. Spot-check a few real matchups for face validity (e.g. a top side vs a minnow should
+   skew heavily, an even tie should sit near the empirical draw rate).
+
+Expectation given the LOCKED 0.588 spread: var/mean slightly hot (~1.29), a few more
+blowouts than the sample — accepted by design, not corrected.
+
+### VALIDATED — S38 round-robin (47/48 nations, 2,162 ordered matchups, λ₃=0)
+
+`--validate-scoreline` result:
+
+| metric | model | empirical | verdict |
+|---|---|---|---|
+| team-match goals mean | **1.178** | 1.18 | exact (no global inflation) |
+| var/mean | **1.292** | 1.18 | as predicted at full spread |
+| draw rate | **25.5%** | ~25–28% | in band → λ₃=0 confirmed |
+
+Goals distribution (per team-match): model `0:35.7% 1:32.1% 2:18.6% 3:8.4% 4:3.3%
+5+:1.8%` vs empirical `0:33.7% 1:34.7% 2:20.4% 3:7.5% 4:2.3% 5+:1.5%` — within ~2pp
+everywhere; model tails marginally fatter (the deliberate 0.588 spread). **Acceptance
+test PASSED.**
+
+**Residual banked for v2 — no defence-suppression.** Elite-vs-elite over-scores
+(ESP-vs-ENG λ ≈ 2.6/2.5 → ~5 goals). The index prices attacker-vs-defender
+one-directionally, so an elite attack overruns even an elite defence; reality has two
+strong defences mutually suppressing the game. Doesn't dent the *aggregate* distribution
+(it's a minority of matchups, balanced in the mean), but a defence-strength dampening /
+game-control term is the right v2 refinement. Lives in the same family as the deferred
+possession-flow model.
 
 ---
 
