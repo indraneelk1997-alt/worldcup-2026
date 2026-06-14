@@ -319,6 +319,19 @@ the opp box for corners would distort open-play battles if baked in).
 operate by *reshaping the kernel* — width stretches it laterally, line height shifts
 it up/down, false-9 pulls the striker's kernel back — never by editing cell lists.
 
+**Banked (v2, surfaced S38 while building the Notion explainer) — phase-conditioned
+occupancy.** The two kernels split only on **in vs out of possession**, so each weight is
+a *marginal* averaged over the whole phase: the attack cloud bundles **build-up + attack**,
+the defence cloud bundles **press + settled defending**. The item-7 battle disambiguates
+the four contexts (build-up / attack / press / contain) *spatially* — own half = build-up
+vs press, attacking half = attack vs defend — so the occupancy is conditioned for free on
+the clear zones (deep = build-up, high = attack). The **residual error** is the **ambiguous
+middle bands (B3–B4)** and game-state-dependent moments, where one physical zone hosts
+different profiles and the marginal weight mis-splits — **sharpest for midfielders**, who
+live in those bands and touch all four phases. v2 experiment: condition the kernels on all
+**four** profiles, not two. Deferred — quartering the events risks thin-sample overfitting.
+(Maintainer insight, S38.)
+
 ## Decision 5 — team playstyle → kernel transforms (LOCKED S30)
 
 Each role has **two kernels**: an **attack-phase** and a **defence-phase** shape

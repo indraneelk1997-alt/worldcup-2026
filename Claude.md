@@ -229,3 +229,29 @@ These are the hard-won rules. They override default helpfulness.
 - `docs/v104_ingest_design.md` — V1.04 ingest architecture decisions.
 - `docs/db_schema.md` — auto-generated schema reference (regenerate via
   `src/tools/dump_db_schema.py`).
+
+## Visual generation standards (HARD RULES — added S39, apply to every SVG/diagram AND the dashboard)
+
+Before sharing ANY generated visual, it must pass all of these. Do not ship a visual I cannot guarantee is clean.
+
+1. **No overlaps, ever.** A label must not touch its own marker, another marker, or
+   another label. Offset a label beyond `marker_radius + font_height + gap`
+   (≈ r + 1.5 + 0.5). If markers cluster, place labels in the surrounding EMPTY
+   space (there usually is some) — do NOT use leader/callout lines when space
+   exists (they look bad). For tactics-board dots, prefer **code-inside-the-dot**
+   (pale fill + dark code centred) — it eliminates label overlap entirely.
+2. **Crop / margins.** Pad the viewBox ≥6–8 units on every side; use negative
+   origins if needed and make the background rect cover the full viewBox. Titles,
+   subtitles and captions must fit fully — shrink the font or widen the viewBox;
+   never let text clip at an edge.
+3. **Fonts.** Dark text (`#0f172a`/`#334155`) on light backgrounds. NEVER white text
+   or `paint-order`/stroke "halo" tricks — they silently drop in PNG export. Keep
+   bold ≤ 600 and use it sparingly. Legible sizes.
+4. **Colours.** Keep fills light enough that dark text on them stays readable (cap
+   heat-overlay opacity). Consistent class palette: GK gold, DEF blue, MID amber,
+   FWD red; grass = light green.
+5. **Line spacing.** Multi-line captions need clear vertical gaps; never stack text
+   on a marker or on another line.
+6. **Verify before sharing.** Mentally check every label's box against every marker
+   and every other label. If any overlap is possible, redesign (inside-dot codes or
+   margin placement) — don't ship and hope.

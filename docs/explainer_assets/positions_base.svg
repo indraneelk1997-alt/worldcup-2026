@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 152 124" font-family="Inter, Helvetica, Arial, sans-serif">
+  <rect x="0" y="0" width="152" height="124" fill="#ffffff"/>
+  <text x="76" y="9" text-anchor="middle" font-size="6" font-weight="700" fill="#0f172a">The 23 Role Anchors on the Pitch</text>
+  <text x="76" y="15.5" text-anchor="middle" font-size="3.3" fill="#64748b">each position's home spot · half-band anchors (WB, CAM, ST) sit on a band edge · neutral playstyle</text>
+
+  <!-- grass stripes -->
+  <g>
+    <rect x="14" y="20" width="20" height="80" fill="#4aa64f"/><rect x="34" y="20" width="20" height="80" fill="#439e48"/><rect x="54" y="20" width="20" height="80" fill="#4aa64f"/><rect x="74" y="20" width="20" height="80" fill="#439e48"/><rect x="94" y="20" width="20" height="80" fill="#4aa64f"/><rect x="114" y="20" width="20" height="80" fill="#439e48"/>
+  </g>
+  <!-- zone grid -->
+  <g stroke="#ffffff" stroke-width="0.3" stroke-opacity="0.4">
+    <line x1="34" y1="20" x2="34" y2="100"/><line x1="54" y1="20" x2="54" y2="100"/><line x1="74" y1="20" x2="74" y2="100"/><line x1="94" y1="20" x2="94" y2="100"/><line x1="114" y1="20" x2="114" y2="100"/>
+    <line x1="14" y1="38" x2="134" y2="38"/><line x1="14" y1="50" x2="134" y2="50"/><line x1="14" y1="70" x2="134" y2="70"/><line x1="14" y1="82" x2="134" y2="82"/>
+  </g>
+  <!-- pitch markings -->
+  <g stroke="#ffffff" stroke-width="0.6" fill="none" stroke-opacity="0.95">
+    <rect x="14" y="20" width="120" height="80"/>
+    <line x1="74" y1="20" x2="74" y2="100"/>
+    <circle cx="74" cy="60" r="9"/><circle cx="74" cy="60" r="0.7" fill="#ffffff"/>
+    <rect x="14" y="38" width="18" height="44"/><rect x="116" y="38" width="18" height="44"/>
+    <rect x="14" y="50" width="6" height="20"/><rect x="128" y="50" width="6" height="20"/>
+  </g>
+
+  <!-- role dots: GK yellow · DEF blue · MID amber · FWD red -->
+  <g stroke="#ffffff" stroke-width="0.5">
+    <circle cx="24" cy="60" r="3.3" fill="#facc15"/>
+    <circle cx="44" cy="44" r="3.3" fill="#2563eb"/><circle cx="44" cy="60" r="3.3" fill="#2563eb"/><circle cx="44" cy="76" r="3.3" fill="#2563eb"/>
+    <circle cx="64" cy="29" r="3.3" fill="#2563eb"/><circle cx="64" cy="91" r="3.3" fill="#2563eb"/>
+    <circle cx="74" cy="29" r="3.3" fill="#2563eb"/><circle cx="74" cy="91" r="3.3" fill="#2563eb"/>
+    <circle cx="64" cy="60" r="3.3" fill="#f59e0b"/>
+    <circle cx="84" cy="29" r="3.3" fill="#f59e0b"/><circle cx="84" cy="44" r="3.3" fill="#f59e0b"/><circle cx="84" cy="60" r="3.3" fill="#f59e0b"/><circle cx="84" cy="76" r="3.3" fill="#f59e0b"/><circle cx="84" cy="91" r="3.3" fill="#f59e0b"/>
+    <circle cx="94" cy="60" r="3.3" fill="#f59e0b"/>
+    <circle cx="104" cy="44" r="3.3" fill="#f59e0b"/><circle cx="104" cy="76" r="3.3" fill="#f59e0b"/>
+    <circle cx="104" cy="29" r="3.3" fill="#dc2626"/><circle cx="104" cy="91" r="3.3" fill="#dc2626"/>
+    <circle cx="114" cy="60" r="3.3" fill="#dc2626"/>
+  </g>
+
+  <!-- role labels -->
+  <g font-size="2.4" text-anchor="middle" font-weight="700" fill="#0f172a" paint-order="stroke" stroke="#ffffff" stroke-width="0.7">
+    <text x="24" y="55.4">GK</text>
+    <text x="44" y="39.4">LCB</text><text x="44" y="55.4">CB / DF</text><text x="44" y="71.4">RCB</text>
+    <text x="64" y="24.4">LB</text><text x="64" y="86.4">RB</text>
+    <text x="74" y="24.4">LWB</text><text x="74" y="86.4">RWB</text>
+    <text x="64" y="55.4">DM</text>
+    <text x="84" y="24.4">LM</text><text x="84" y="39.4">LCM</text><text x="84" y="55.4">CM / MF</text><text x="84" y="71.4">RCM</text><text x="84" y="86.4">RM</text>
+    <text x="94" y="55.4">CAM</text>
+    <text x="104" y="39.4">LAM</text><text x="104" y="71.4">RAM</text>
+    <text x="104" y="24.4">LW</text><text x="104" y="86.4">RW</text>
+    <text x="114" y="55.4">ST / FW</text>
+  </g>
+
+  <!-- lane + band guide labels -->
+  <g font-size="2.7" text-anchor="middle" fill="#334155">
+    <text x="24" y="104.5">B1</text><text x="44" y="104.5">B2</text><text x="64" y="104.5">B3</text><text x="84" y="104.5">B4</text><text x="104" y="104.5">B5</text><text x="124" y="104.5">B6</text>
+  </g>
+  <g font-size="2.7" text-anchor="end" fill="#334155">
+    <text x="12.5" y="30">LW</text><text x="12.5" y="45">LHS</text><text x="12.5" y="61">C</text><text x="12.5" y="77">RHS</text><text x="12.5" y="92">RW</text>
+  </g>
+
+  <!-- legend -->
+  <g font-size="2.8">
+    <circle cx="16" cy="111" r="2.2" fill="#facc15" stroke="#ffffff" stroke-width="0.4"/><text x="20" y="112" fill="#334155">Goalkeeper</text>
+    <circle cx="46" cy="111" r="2.2" fill="#2563eb" stroke="#ffffff" stroke-width="0.4"/><text x="50" y="112" fill="#334155">Defenders</text>
+    <circle cx="74" cy="111" r="2.2" fill="#f59e0b" stroke="#ffffff" stroke-width="0.4"/><text x="78" y="112" fill="#334155">Midfielders</text>
+    <circle cx="105" cy="111" r="2.2" fill="#dc2626" stroke="#ffffff" stroke-width="0.4"/><text x="109" y="112" fill="#334155">Forwards</text>
+  </g>
+  <line x1="54" y1="116.5" x2="94" y2="116.5" stroke="#0f172a" stroke-width="0.6"/><path d="M94 116.5 l-3 -1.5 l0 3 z" fill="#0f172a"/>
+  <text x="74" y="122" text-anchor="middle" font-size="2.9" fill="#0f172a" font-weight="600">attacking direction</text>
+  <text x="138" y="122" text-anchor="end" font-size="2.2" fill="#94a3b8">CB/DF, CM/MF, ST/FW share an anchor (generic fallbacks)</text>
+</svg>

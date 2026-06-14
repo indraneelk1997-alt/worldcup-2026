@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-10 0 172 149" font-family="Inter, Helvetica, Arial, sans-serif">
+  <rect x="-10" y="0" width="172" height="149" fill="#ffffff"/>
+  <text x="76" y="7.5" text-anchor="middle" font-size="4.8" font-weight="600" fill="#0f172a">Where Three Roles Actually Roam</text>
+  <text x="76" y="12.2" text-anchor="middle" font-size="2.7" fill="#64748b">each role's full spread of zones · darker green = more time spent there · to scale, attack →</text>
+  <text x="60" y="18" text-anchor="middle" font-size="3.4" font-weight="600" fill="#16a34a">ATTACK phase</text>
+  <text x="118" y="18" text-anchor="middle" font-size="3.4" font-weight="600" fill="#2563eb">DEFENCE phase</text>
+
+  <!-- row labels -->
+  <g font-size="3" font-weight="600" fill="#0f172a" text-anchor="middle">
+    <text x="89" y="22.5">Full-back (LB)</text>
+    <text x="89" y="60.5">Box-to-box midfielder (CM)</text>
+    <text x="89" y="98.5">Winger (LW)</text>
+  </g>
+
+  <!-- grass bases -->
+  <g fill="#4aa64f">
+    <rect x="34" y="24" width="52" height="30"/><rect x="92" y="24" width="52" height="30"/>
+    <rect x="34" y="62" width="52" height="30"/><rect x="92" y="62" width="52" height="30"/>
+    <rect x="34" y="100" width="52" height="30"/><rect x="92" y="100" width="52" height="30"/>
+  </g>
+
+  <!-- shaded cells (#0c3b1e at presence opacity) -->
+  <g fill="#0c3b1e">
+    <!-- LB attack -->
+    <rect x="34" y="24" width="8.667" height="6.75" fill-opacity="0.30"/><rect x="42.667" y="24" width="8.667" height="6.75" fill-opacity="0.70"/><rect x="42.667" y="30.75" width="8.667" height="4.5" fill-opacity="0.25"/><rect x="51.333" y="24" width="8.667" height="6.75" fill-opacity="1.0"/><rect x="51.333" y="30.75" width="8.667" height="4.5" fill-opacity="0.26"/><rect x="60" y="24" width="8.667" height="6.75" fill-opacity="0.96"/><rect x="68.667" y="24" width="8.667" height="6.75" fill-opacity="0.81"/><rect x="77.333" y="24" width="8.667" height="6.75" fill-opacity="0.40"/>
+    <!-- LB defence -->
+    <rect x="92" y="24" width="8.667" height="6.75" fill-opacity="0.87"/><rect x="92" y="30.75" width="8.667" height="4.5" fill-opacity="0.56"/><rect x="92" y="35.25" width="8.667" height="7.5" fill-opacity="0.40"/><rect x="100.667" y="24" width="8.667" height="6.75" fill-opacity="1.0"/><rect x="100.667" y="30.75" width="8.667" height="4.5" fill-opacity="0.38"/><rect x="109.333" y="24" width="8.667" height="6.75" fill-opacity="0.95"/><rect x="118" y="24" width="8.667" height="6.75" fill-opacity="0.79"/><rect x="126.667" y="24" width="8.667" height="6.75" fill-opacity="0.50"/><rect x="135.333" y="24" width="8.667" height="6.75" fill-opacity="0.30"/>
+    <!-- CM attack -->
+    <rect x="42.667" y="73.25" width="8.667" height="7.5" fill-opacity="0.51"/><rect x="51.333" y="62" width="8.667" height="6.75" fill-opacity="0.76"/><rect x="51.333" y="68.75" width="8.667" height="4.5" fill-opacity="0.72"/><rect x="51.333" y="73.25" width="8.667" height="7.5" fill-opacity="1.0"/><rect x="51.333" y="80.75" width="8.667" height="4.5" fill-opacity="0.72"/><rect x="51.333" y="85.25" width="8.667" height="6.75" fill-opacity="0.76"/><rect x="60" y="62" width="8.667" height="6.75" fill-opacity="0.94"/><rect x="60" y="68.75" width="8.667" height="4.5" fill-opacity="0.73"/><rect x="60" y="73.25" width="8.667" height="7.5" fill-opacity="0.94"/><rect x="60" y="80.75" width="8.667" height="4.5" fill-opacity="0.73"/><rect x="60" y="85.25" width="8.667" height="6.75" fill-opacity="0.94"/><rect x="68.667" y="62" width="8.667" height="6.75" fill-opacity="0.72"/><rect x="68.667" y="68.75" width="8.667" height="4.5" fill-opacity="0.53"/><rect x="68.667" y="73.25" width="8.667" height="7.5" fill-opacity="0.59"/><rect x="68.667" y="80.75" width="8.667" height="4.5" fill-opacity="0.53"/><rect x="68.667" y="85.25" width="8.667" height="6.75" fill-opacity="0.72"/>
+    <!-- CM defence -->
+    <rect x="100.667" y="62" width="8.667" height="6.75" fill-opacity="0.78"/><rect x="100.667" y="68.75" width="8.667" height="4.5" fill-opacity="0.61"/><rect x="100.667" y="73.25" width="8.667" height="7.5" fill-opacity="0.90"/><rect x="100.667" y="80.75" width="8.667" height="4.5" fill-opacity="0.61"/><rect x="100.667" y="85.25" width="8.667" height="6.75" fill-opacity="0.78"/><rect x="109.333" y="62" width="8.667" height="6.75" fill-opacity="1.0"/><rect x="109.333" y="68.75" width="8.667" height="4.5" fill-opacity="0.65"/><rect x="109.333" y="73.25" width="8.667" height="7.5" fill-opacity="0.95"/><rect x="109.333" y="80.75" width="8.667" height="4.5" fill-opacity="0.65"/><rect x="109.333" y="85.25" width="8.667" height="6.75" fill-opacity="1.0"/><rect x="118" y="62" width="8.667" height="6.75" fill-opacity="0.94"/><rect x="118" y="68.75" width="8.667" height="4.5" fill-opacity="0.73"/><rect x="118" y="73.25" width="8.667" height="7.5" fill-opacity="0.93"/><rect x="118" y="80.75" width="8.667" height="4.5" fill-opacity="0.73"/><rect x="118" y="85.25" width="8.667" height="6.75" fill-opacity="0.94"/><rect x="126.667" y="62" width="8.667" height="6.75" fill-opacity="0.65"/><rect x="126.667" y="73.25" width="8.667" height="7.5" fill-opacity="0.67"/><rect x="126.667" y="85.25" width="8.667" height="6.75" fill-opacity="0.65"/>
+    <!-- LW attack -->
+    <rect x="42.667" y="100" width="8.667" height="6.75" fill-opacity="0.30"/><rect x="51.333" y="100" width="8.667" height="6.75" fill-opacity="0.56"/><rect x="51.333" y="106.75" width="8.667" height="4.5" fill-opacity="0.25"/><rect x="60" y="100" width="8.667" height="6.75" fill-opacity="0.84"/><rect x="60" y="106.75" width="8.667" height="4.5" fill-opacity="0.32"/><rect x="60" y="111.25" width="8.667" height="7.5" fill-opacity="0.26"/><rect x="68.667" y="100" width="8.667" height="6.75" fill-opacity="1.0"/><rect x="68.667" y="106.75" width="8.667" height="4.5" fill-opacity="0.38"/><rect x="68.667" y="111.25" width="8.667" height="7.5" fill-opacity="0.27"/><rect x="77.333" y="100" width="8.667" height="6.75" fill-opacity="0.49"/><rect x="77.333" y="106.75" width="8.667" height="4.5" fill-opacity="0.33"/>
+    <!-- LW defence -->
+    <rect x="92" y="100" width="8.667" height="6.75" fill-opacity="0.46"/><rect x="100.667" y="100" width="8.667" height="6.75" fill-opacity="0.79"/><rect x="100.667" y="106.75" width="8.667" height="4.5" fill-opacity="0.34"/><rect x="109.333" y="100" width="8.667" height="6.75" fill-opacity="1.0"/><rect x="109.333" y="106.75" width="8.667" height="4.5" fill-opacity="0.35"/><rect x="118" y="100" width="8.667" height="6.75" fill-opacity="0.99"/><rect x="118" y="106.75" width="8.667" height="4.5" fill-opacity="0.37"/><rect x="126.667" y="100" width="8.667" height="6.75" fill-opacity="0.83"/><rect x="126.667" y="106.75" width="8.667" height="4.5" fill-opacity="0.42"/><rect x="135.333" y="100" width="8.667" height="6.75" fill-opacity="0.51"/><rect x="135.333" y="106.75" width="8.667" height="4.5" fill-opacity="0.35"/>
+  </g>
+
+  <!-- grid + outline per pitch -->
+  <g stroke="#ffffff" stroke-opacity="0.35" stroke-width="0.25">
+    <g><line x1="42.667" y1="24" x2="42.667" y2="54"/><line x1="51.333" y1="24" x2="51.333" y2="54"/><line x1="60" y1="24" x2="60" y2="54"/><line x1="68.667" y1="24" x2="68.667" y2="54"/><line x1="77.333" y1="24" x2="77.333" y2="54"/><line x1="34" y1="30.75" x2="86" y2="30.75"/><line x1="34" y1="35.25" x2="86" y2="35.25"/><line x1="34" y1="42.75" x2="86" y2="42.75"/><line x1="34" y1="47.25" x2="86" y2="47.25"/></g>
+    <g><line x1="100.667" y1="24" x2="100.667" y2="54"/><line x1="109.333" y1="24" x2="109.333" y2="54"/><line x1="118" y1="24" x2="118" y2="54"/><line x1="126.667" y1="24" x2="126.667" y2="54"/><line x1="135.333" y1="24" x2="135.333" y2="54"/><line x1="92" y1="30.75" x2="144" y2="30.75"/><line x1="92" y1="35.25" x2="144" y2="35.25"/><line x1="92" y1="42.75" x2="144" y2="42.75"/><line x1="92" y1="47.25" x2="144" y2="47.25"/></g>
+    <g><line x1="42.667" y1="62" x2="42.667" y2="92"/><line x1="51.333" y1="62" x2="51.333" y2="92"/><line x1="60" y1="62" x2="60" y2="92"/><line x1="68.667" y1="62" x2="68.667" y2="92"/><line x1="77.333" y1="62" x2="77.333" y2="92"/><line x1="34" y1="68.75" x2="86" y2="68.75"/><line x1="34" y1="73.25" x2="86" y2="73.25"/><line x1="34" y1="80.75" x2="86" y2="80.75"/><line x1="34" y1="85.25" x2="86" y2="85.25"/></g>
+    <g><line x1="100.667" y1="62" x2="100.667" y2="92"/><line x1="109.333" y1="62" x2="109.333" y2="92"/><line x1="118" y1="62" x2="118" y2="92"/><line x1="126.667" y1="62" x2="126.667" y2="92"/><line x1="135.333" y1="62" x2="135.333" y2="92"/><line x1="92" y1="68.75" x2="144" y2="68.75"/><line x1="92" y1="73.25" x2="144" y2="73.25"/><line x1="92" y1="80.75" x2="144" y2="80.75"/><line x1="92" y1="85.25" x2="144" y2="85.25"/></g>
+    <g><line x1="42.667" y1="100" x2="42.667" y2="130"/><line x1="51.333" y1="100" x2="51.333" y2="130"/><line x1="60" y1="100" x2="60" y2="130"/><line x1="68.667" y1="100" x2="68.667" y2="130"/><line x1="77.333" y1="100" x2="77.333" y2="130"/><line x1="34" y1="106.75" x2="86" y2="106.75"/><line x1="34" y1="111.25" x2="86" y2="111.25"/><line x1="34" y1="118.75" x2="86" y2="118.75"/><line x1="34" y1="123.25" x2="86" y2="123.25"/></g>
+    <g><line x1="100.667" y1="100" x2="100.667" y2="130"/><line x1="109.333" y1="100" x2="109.333" y2="130"/><line x1="118" y1="100" x2="118" y2="130"/><line x1="126.667" y1="100" x2="126.667" y2="130"/><line x1="135.333" y1="100" x2="135.333" y2="130"/><line x1="92" y1="106.75" x2="144" y2="106.75"/><line x1="92" y1="111.25" x2="144" y2="111.25"/><line x1="92" y1="118.75" x2="144" y2="118.75"/><line x1="92" y1="123.25" x2="144" y2="123.25"/></g>
+  </g>
+  <g stroke="#ffffff" stroke-width="0.6" fill="none">
+    <rect x="34" y="24" width="52" height="30"/><rect x="92" y="24" width="52" height="30"/><rect x="34" y="62" width="52" height="30"/><rect x="92" y="62" width="52" height="30"/><rect x="34" y="100" width="52" height="30"/><rect x="92" y="100" width="52" height="30"/>
+  </g>
+
+  <!-- own-goal / opp-goal hints under bottom row -->
+  <text x="35" y="137" font-size="2.4" fill="#94a3b8">own goal</text>
+  <text x="143" y="137" text-anchor="end" font-size="2.4" fill="#94a3b8">opp goal →</text>
+  <text x="76" y="144" text-anchor="middle" font-size="2.2" fill="#475569">A player's traits shift these maps a little — quicker players push higher, tireless ones roam wider, heavy pressers push the defence up.</text>
+</svg>

@@ -3,7 +3,7 @@
 > **Fast-changing.** This is "where we are right now." Updated at the end
 > of each working session. For permanent facts/rules, see `Claude.md`.
 
-**Last updated:** end of S38 (2026-06-14)
+**Last updated:** end of S39 (2026-06-15)
 **Current version line:** **Chessboard model COMPLETE — items 1–8 all DONE & validated.**
 Item 8 step **E (bivariate Poisson → scoreline)** built + validated S38: a full
 team-vs-team matchup now runs end to end (adjusted attrs → occupancy boards → zone
@@ -12,6 +12,59 @@ battles → aggregated index → VOLUME → bivariate-Poisson scoreline). Accept
 band). `λ₃=0` LOCKED; `VOLUME=199.4` promoted to `zone_battle.json`. DB unchanged at
 **41 tables** (read-only orchestration; no DDL). **Next agenda: dashboard visual design**
 (+ full-tournament sim). Design doc: `docs/item8_aggregation.md`.
+
+## S39 outcome — Notion explainer, diagram set, data-layer docs, two backlog DBs
+
+Non-code session (documentation + planning + visual assets). **No DB or model changes.**
+
+### Built in Notion
+- **"Inside the Chessboard" explainer** — standalone page + Section Navigator DB + 15
+  sub-pages: the 8 model layers (pitch/xT, formations, occupancy, team style, player
+  styles, synthesis, zone battle, scoreline) + goalkeeper + **data-layer trio** (13 EA
+  form-adjustment, 14 data sources Understat/StatsBomb/FBref, 15 the 41-table tour) +
+  assumptions/knobs + glossary. Written for a general reader. Old Section 10 folded → 14.
+- **Model Improvement Backlog** DB (20 items; under the project page) — every parked/
+  deferred idea + new ones: opponent-relative/matchup-adaptive playstyle (style axes are
+  relational — a low-block side vs a minnow attacks), amplify-PlayStyle magnitudes.
+- **Interactive Dashboard — Spec & Build Plan** DB (9 elements; under the project page)
+  — formation pitch, player tokens, info panel, knobs/filters, player profile/swap,
+  stats view, sim, and the build-stack decision.
+
+### Repo changes (this session, uncommitted until the commit below)
+- New `docs/explainer_assets/*.svg` — 8 to-scale diagrams (grid_threat, positions
+  defence/attack/blended, formations, occupancy_kernels, team_radar, scoreline_matrices).
+  PNG-export via the cairosvg one-liner.
+- `Claude.md`: added **Visual generation standards** (hard rules: no overlaps, proper
+  crop/margins, dark text only — no white/halo that drops in PNG, light fills, consistent
+  palette, verify before sharing). Applies to all diagrams + the dashboard.
+- `docs/chessboard_design.md`: banked the **phase-conditioned (4-way) occupancy kernel**
+  v2 idea (Decision 4); also `session_state.md` v2-backlog #4.
+
+### S40 openers
+1. **Dashboard P2** — pick the build stack (Streamlit vs web app vs single-file HTML
+   artifact), then build version by version from the Dashboard Spec DB.
+2. **Finish the explainer language pass** — Sections 3 & 4 done (kernel→cloud,
+   prior→default); the rest want a plain-language rewrite. Cleanest via **recreating
+   pages** (the in-place Notion editor corrupts multi-block content — bit Section 1).
+3. Start the **Model Improvement Backlog** (high-priority: opponent-relative playstyle,
+   per-team formation, attribute-weight fitting, defence-suppression).
+
+### S39 commit
+```
+S39: explainer diagrams + visual standards + banked v2 notes (docs/assets only)
+
+Documentation/planning session — no model or DB changes. Built the "Inside the
+Chessboard" Notion explainer (15 sub-pages incl. the data-layer trio + 41-table tour),
+a Model Improvement Backlog DB (20 items) and a Dashboard Spec DB (9 items).
+
+Repo:
+- docs/explainer_assets/*.svg: 8 to-scale SVG diagrams for the explainer.
+- Claude.md: Visual generation standards (hard rules for all diagrams + the dashboard).
+- docs/chessboard_design.md: banked phase-conditioned (4-way) occupancy kernel (v2).
+- docs/session_state.md: S39 entry.
+
+Refs: docs/chessboard_design.md, docs/session_state.md
+```
 
 ## S38 outcome — item 8 step E (scoreline) built + validated → chessboard COMPLETE
 
@@ -59,6 +112,16 @@ mean 1.178 (exact target → no global inflation), var/mean 1.292 (as predicted)
 3. Banked refinements (carried): Vinícius linkage check; quality-aware formation-per-team;
    shot-specific occupancy for conversion; selection blend-weight tune; half-space zone_xt
    calibration; the 1 unassembled nation; the v2 defence-suppression term.
+4. **Phase-conditioned occupancy kernels (v2, surfaced S38 while building the explainer).**
+   `occupancy_base` splits only on in/out of possession, so each kernel weight is a
+   *marginal* averaged over the whole phase — the attack cloud bundles build-up + attack,
+   the defence cloud bundles press + settled defending. The item-7 battle disambiguates
+   the four contexts (build-up/attack/press/contain) *spatially* (own half vs attacking
+   half), which covers the clear zones; the residual mis-split concentrates in the
+   ambiguous **middle bands (B3–B4)** and game-state-dependent moments, **sharpest for
+   midfielders** (they live there and touch all four phases). Experiment: condition the
+   kernels on all four profiles, not just two. Deferred — quartering the events risks
+   thin-cell overfitting. (Maintainer insight; documented in explainer Section 3 + chessboard_design.md.)
 
 ### S38 commit
 ```
