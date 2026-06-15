@@ -3,8 +3,8 @@
 > **Fast-changing.** This is "where we are right now." Updated at the end
 > of each working session. For permanent facts/rules, see `Claude.md`.
 
-**Last updated:** end of S40 (2026-06-15)
-**Current version line:** **Dashboard build STARTED — V0 (Streamlit walking skeleton) BUILT & verified (S40).** Chessboard model COMPLETE — items 1–8 all DONE & validated.
+**Last updated:** end of S41 (2026-06-15)
+**Current version line:** **Dashboard V1 (vertical formation pitch + strategy) BUILT & accepted (S41).** V0 skeleton banked S40. Chessboard model COMPLETE — items 1–8 all DONE & validated.
 Item 8 step **E (bivariate Poisson → scoreline)** built + validated S38: a full
 team-vs-team matchup now runs end to end (adjusted attrs → occupancy boards → zone
 battles → aggregated index → VOLUME → bivariate-Poisson scoreline). Acceptance test
@@ -12,6 +12,94 @@ battles → aggregated index → VOLUME → bivariate-Poisson scoreline). Accept
 band). `λ₃=0` LOCKED; `VOLUME=199.4` promoted to `zone_battle.json`. DB unchanged at
 **41 tables** (read-only orchestration; no DDL). **Next agenda: dashboard visual design**
 (+ full-tournament sim). Design doc: `docs/item8_aggregation.md`.
+
+## S41 outcome — dashboard V1 (vertical formation pitch + strategy)
+
+Continuation of the same day as S40. Heavy UI-iteration session, all in `dashboard/`;
+shell-relay throughout (Indraneel ran every command, pasted screenshots for visual
+verification). **No model or DB-schema changes** — all additions are read-only view
+logic in the adapter + app. Notion **Dashboard Tracker**: Formation pitch / Player
+tokens / Right-side info panel → **Built**, plus 8 sub-element rows (orientation, 4
+view modes, heatmap, token style, EA labels, playstyle meters, strategy, scoreline
+heatmap) hung off them via the Parent relation.
+
+### What V1 is (accepted)
+A **vertical** formation pitch, **one team at a time**, oriented like a real match —
+Team A home-bottom attacking up, Team B home-top attacking down. Sidebar controls
+(team A/B, which team's pitch, 4 view modes). Right panel: GK + 5 playstyle meters.
+Full-width below: a rule-based **strategy write-up** (strengths / watch-outs).
+Scoreline matrix is a **blue heatmap** (white text, % cells).
+
+### Decisions locked (S41)
+- **4 view modes** per team: `standard` (textbook anchors from
+  `position_home_cells.json`), `possession` (p-blended centroid, default), `attack` /
+  `defense` (that phase's grid centroid). Tokens placed at the centroid; GK parked at
+  its anchor (no kernel).
+- **Lane axis inverted** so left flank → top of screen, right flank → bottom (player
+  facing the attacking goal). Vertical orientation flips per side (A up / B down),
+  with L/R mirrored for the down-attacking team. Heatmap reversed to match.
+- **Strategy is rule-based, not generative** — `strategy_notes()` thresholds the 5
+  axes (high ≥0.66 / low ≤0.34) into strengths/weaknesses + a one-line style tag.
+  Explainable + reproducible by design.
+- **Layout (after several iterations):** pitch left (~0.46, height 560), GK +
+  meters in a ~0.54 right panel as a **vertical** bar list, strategy as **two
+  full-width rows** below (not narrow columns), scoreline matrix in an expander.
+  Removed the redundant in-figure title + the divider band that wasted vertical space.
+- **Scoreline heatmap** done matplotlib-free: a custom per-cell Styler (blue alpha by
+  probability, white text, `%` format) — avoids adding matplotlib for `background_gradient`.
+
+### Adapter additions (`dashboard/model_api.py`, all read-only)
+- `assemble_team` now also returns `slots`, `axes`, `ovr` (EA overall per XI ea_id),
+  `gk_ovr`.
+- `pitch_layout(team, view)` (4 modes) + `team_heatmap(team, view)` + `_home_anchors()`
+  (cached) + `_band_lane_to_xy` (lane-inverted) + `_slot_band_lane`.
+- `strategy_notes(team)` → {summary, strengths[], weaknesses[]}.
+- `--pitch <NAT> <view>` CLI probe.
+
+### S41 gotchas banked
+- **Import-style mix bites both ways** (S40 lesson confirmed): `formation_assembly.py`
+  uses package-absolute imports, so it must be run as a **module** from the repo root
+  (`uv run python -m src.load.v2_ingest.formation_assembly …`), not as a path
+  (`python src/load/...` → `ModuleNotFoundError: No module named 'src'`). The
+  dashboard's `model_api` puts BOTH the repo root and the v2_ingest dir on `sys.path`
+  so either style resolves.
+- `estimated_size` from `duckdb_tables()` is an **estimate** (best_xi read 1320 vs
+  true 660). Use `COUNT(*)` when the exact number matters (caught during the trim).
+
+### Known gaps / next
+- **Position-constrained XI selection is the headline S42 task.** `autopick_xi` fills
+  slots by group only, so Kane lands at LW and Rashford at ST (England), Cucurella at
+  RCB (Spain), etc. Needs role/side-aware slotting (respect `position_code` + flank).
+  Model-side change in `zone_aggregate.py`; verify across nations.
+- Then V2: player click → profile + swap, tunable knobs (formation, λ₃), substitute
+  list. The V1 panel already stubs these ("coming in V2").
+
+### Files (S41, uncommitted until the commit below)
+- Modified: `dashboard/app.py` (vertical pitch, 4-view, strategy, scoreline heatmap,
+  layout), `dashboard/model_api.py` (the adapter additions above), `docs/session_state.md`.
+- **No DDL**, no new deps (plotly was added S40-cont via `uv add plotly`). `db_schema.md`
+  unchanged at 41 tables. Trimmed DB unaffected (no table reads changed).
+
+### S41 commit
+```
+S41: dashboard V1 — vertical formation pitch + strategy write-up
+
+Vertical, one-team-at-a-time pitch oriented like a real match (Team A home-bottom
+attacks up, Team B home-top attacks down; lane axis inverted L=top/R=bottom).
+Sidebar controls + 4 view modes (standard/possession/attack/defense). Right panel:
+GK + 5 playstyle meters. Full-width strategy write-up (rule-based strengths/
+watch-outs from the 5 axes). Scoreline matrix -> blue heatmap (white text, % cells,
+matplotlib-free Styler).
+
+model_api (read-only adapter): assemble_team += slots/axes/ovr/gk_ovr; pitch_layout
+(4 views) + team_heatmap(view) + _home_anchors + _band_lane_to_xy (lane-inverted) +
+strategy_notes(); --pitch CLI probe.
+
+No model/DB changes. db_schema.md unchanged at 41 tables.
+
+Modified: dashboard/app.py, dashboard/model_api.py, docs/session_state.md
+Refs: docs/dashboard_design.md, docs/session_state.md
+```
 
 ## S40 outcome — dashboard V0 (Streamlit walking skeleton) + tracker + trimmed DB
 

@@ -83,8 +83,12 @@ property mirrors this exactly.
   (dropdowns) + formation; show both auto-XIs (text) + scoreline matrix +
   W/D/L/E[goals]. Proves the import/cache/contract end-to-end.
   *Elements: Match simulation (basic), Build approach.*
-- **V1 — the pitch.** Formation pitch render + player tokens from the
-  occupancy boards; click a token → right-side info panel.
+- **V1 — the pitch. DONE (S41).** *Vertical* formation pitch, one team at a
+  time, oriented like a match (A home-bottom attacks up, B home-top attacks
+  down). 4 view modes (standard / possession / attack / defense), occupancy
+  heatmap backdrop, class-coloured tokens + EA `ovr` labels, right-panel
+  playstyle meters + a rule-based strategy write-up, blue scoreline heatmap.
+  Click→player profile deferred to V2 (panel stubs it).
   *Elements: Formation pitch, Player tokens, Right-side info panel.*
 - **V2 — interactivity.** Player profile (EA + empirical toggle) + swap →
   recompute; knobs/filters (formation, λ₃, …).

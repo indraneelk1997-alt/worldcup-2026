@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from functools import lru_cache
 from pathlib import Path
 
 # Two entries on sys.path, because the model's modules mix import styles:
@@ -49,10 +50,14 @@ if "WC2026_DB" not in os.environ:
         os.environ["WC2026_DB"] = str(_dash)
 
 from src.load.v2_ingest.zone_aggregate import (          # noqa: E402
-    _scoreline_setup, autopick_xi, load_gk_score,
+    _scoreline_setup, autopick_xi, load_gk_score, SLOT_GROUP,
     _lambda_pair, bivariate_poisson_matrix, _matrix_summary,
 )
 from src.load.v2_ingest.formation_assembly import assemble, team_boards  # noqa: E402
+from src.load.v2_ingest.kernel_transforms import (       # noqa: E402
+    N_BANDS, N_LANES, _centroid_band, _centroid_lane)
+
+PITCH_LEN, PITCH_WID = 120.0, 80.0        # StatsBomb pitch; own goal x=0, attack x=120
 
 DEFAULT_FORMATION = "4-3-3"
 
@@ -90,16 +95,32 @@ def assemble_team(con, nation: str, P: dict, formation: str = DEFAULT_FORMATION)
     (_lambda_pair / compute_attack_index) expect them, so this dict is a valid
     input to those.  Returns None if the squad can't be assembled.
 
-      -> {nation, formation, sid, names, xi_ea, boards, gk, gk_name}
+      -> {nation, formation, sid, names, xi_ea, slots, axes, boards, gk, gk_name}
+
+    `slots` (the per-slot 6x5 attack/defence grids) and `axes` (team playstyle,
+    incl. possession) are kept so the pitch view can place tokens at each
+    player's blended-grid centroid. `boards` stays for the scoreline path.
     """
     xi_ea, sid, names = autopick_xi(con, nation, formation, P["scores"])
     if not sid:
         return None
-    _, slots = assemble(con, formation, nation, P["cfg"], P["fwd"], xi=xi_ea)
+    axes, slots = assemble(con, formation, nation, P["cfg"], P["fwd"], xi=xi_ea)
     gk_score, gk_name = load_gk_score(con, nation)
+    # EA overall ('ovr') for the XI + the GK, for the token brackets / info panel.
+    ids = list(xi_ea.values())
+    ovr = {}
+    if ids:
+        ph = ",".join("?" * len(ids))
+        ovr = dict(con.execute(
+            f"SELECT ea_id, ovr FROM ea_fc26_player WHERE ea_id IN ({ph})", ids).fetchall())
+    gkr = con.execute(
+        "SELECT e.ovr FROM wc2026_squad s JOIN ea_fc26_player e ON e.ea_id=s.ea_id "
+        "WHERE s.nation_code=? AND s.primary_position_group='GK' "
+        "ORDER BY s.caps DESC LIMIT 1", [nation]).fetchone()
     return {"nation": nation, "formation": formation, "sid": sid, "names": names,
-            "xi_ea": xi_ea, "boards": team_boards(slots),
-            "gk": gk_score, "gk_name": gk_name}
+            "xi_ea": xi_ea, "slots": slots, "axes": axes, "ovr": ovr,
+            "gk_ovr": gkr[0] if gkr else None,
+            "boards": team_boards(slots), "gk": gk_score, "gk_name": gk_name}
 
 
 def matchup(con, nation_a: str, nation_b: str, P: dict,
@@ -121,6 +142,147 @@ def matchup(con, nation_a: str, nation_b: str, P: dict,
     M = bivariate_poisson_matrix(l1, l2, l3)
     return {"team_a": ta, "team_b": tb, "lam_a": lam_a, "lam_b": lam_b,
             "matrix": M, "summary": _matrix_summary(M)}
+
+
+# --------------------------------------------------------------------------- #
+# Pitch view (V1): four placement modes per team.
+#   standard   -> textbook formation anchors (position_home_cells.json)
+#   possession -> centroid of p*attack + (1-p)*defence (default)
+#   attack     -> centroid of the attack-phase grid
+#   defense    -> centroid of the defence-phase grid
+# --------------------------------------------------------------------------- #
+VIEWS = ("standard", "possession", "attack", "defense")
+
+
+@lru_cache(maxsize=1)
+def _home_anchors() -> dict:
+    """position_code -> (band_pos, lane_pos) textbook anchor for the 'standard'
+    view (data/config/position_home_cells.json, chessboard item 2)."""
+    raw = json.loads((_ROOT / "data" / "config" / "position_home_cells.json")
+                     .read_text(encoding="utf-8"))["anchors"]
+    return {pc: (a["band_pos"], a["lane_pos"]) for pc, a in raw.items()}
+
+
+def _blended_grid(slot: dict, p: float):
+    """p*attack + (1-p)*defence for one slot (both are 6x5 numpy grids)."""
+    return p * slot["attack_grid"] + (1.0 - p) * slot["defence_grid"]
+
+
+def _band_lane_to_xy(band: float, lane: float) -> tuple[float, float]:
+    """6x5 band/lane -> pitch (x, y). Band 0 = own goal (x~10), band 5 =
+    attacking goal (x~110). Lane is INVERTED on y so the convention matches a
+    side attacking left->right: lane 0 (left flank) -> high y (top), lane 4
+    (right flank) -> low y (bottom). Heatmap is reversed to match (app.py)."""
+    return ((band + 0.5) / N_BANDS * PITCH_LEN,
+            (N_LANES - lane - 0.5) / N_LANES * PITCH_WID)
+
+
+def _slot_band_lane(slot: dict, view: str, p: float):
+    """Where a slot's token sits, per view. 'standard' = textbook anchor (+ the
+    lateral-fan offset for duplicated central codes); the others = centroid of
+    the attack / defence / possession-blended grid."""
+    if view == "standard":
+        ab, al = _home_anchors()[slot["position_code"]]
+        return ab, al + slot["fan_lane"]
+    g = (slot["attack_grid"] if view == "attack"
+         else slot["defence_grid"] if view == "defense"
+         else _blended_grid(slot, p))
+    return _centroid_band(g), _centroid_lane(g)
+
+
+def pitch_layout(team: dict, view: str = "possession") -> list[dict]:
+    """Token per player for one of the four VIEWS. GK is always parked at its
+    deep-central anchor (it has no occupancy grid).
+      -> [{slot_no, name, position_code, group, ea_id, ovr, x, y, band, lane,
+           budget, mv_tags}]
+    """
+    if view not in VIEWS:
+        raise ValueError(f"view must be one of {VIEWS}, got {view!r}")
+    p = float(team["axes"]["possession"])
+    ovr_map = team.get("ovr", {})
+    out = []
+    for s in team["slots"]:
+        pc = s["position_code"]
+        if s["attack_grid"] is None:                    # GK (no kernel) -> anchor
+            ab, al = _home_anchors().get(pc, (0.0, 2.0))
+            x, y = _band_lane_to_xy(ab, al)
+            out.append({"slot_no": s["slot_no"], "name": team.get("gk_name"),
+                        "position_code": pc, "group": "GK", "ea_id": None,
+                        "ovr": team.get("gk_ovr"), "x": x, "y": y,
+                        "band": ab, "lane": al, "budget": 0.0, "mv_tags": []})
+            continue
+        name = team["names"].get(s["slot_no"])
+        if name is None:                                # unfilled outfield slot
+            continue
+        cb, cl = _slot_band_lane(s, view, p)
+        x, y = _band_lane_to_xy(cb, cl)
+        out.append({"slot_no": s["slot_no"], "name": name, "position_code": pc,
+                    "group": SLOT_GROUP.get(pc, "MID"), "ea_id": s["ea_id"],
+                    "ovr": ovr_map.get(s["ea_id"]), "x": x, "y": y,
+                    "band": cb, "lane": cl,
+                    "budget": float(_blended_grid(s, p).sum()), "mv_tags": s["mv_tags"]})
+    return out
+
+
+def team_heatmap(team: dict, view: str = "possession"):
+    """Team occupancy backdrop (6x5). attack/defense -> that phase's sum; else
+    the possession-blended sum ('standard' uses the blended surface)."""
+    import numpy as np
+    p = float(team["axes"]["possession"])
+    grid = np.zeros((N_BANDS, N_LANES))
+    for s in team["slots"]:
+        if s["attack_grid"] is None:
+            continue
+        grid += (s["attack_grid"] if view == "attack"
+                 else s["defence_grid"] if view == "defense"
+                 else _blended_grid(s, p))
+    return grid
+
+
+def strategy_notes(team: dict) -> dict:
+    """Deterministic, explainable strengths/weaknesses from the 5 playstyle axes
+    (all 0..1 percentiles) + a one-line style tag. No black box -- pure rules.
+      -> {summary, strengths: [...], weaknesses: [...]}"""
+    ax = team["axes"]
+    poss, line = float(ax["possession"]), float(ax["line_height"])
+    press, width, direct = float(ax["ppda"]), float(ax["width"]), float(ax["directness"])
+
+    def lvl(v):
+        return "high" if v >= 0.66 else "low" if v <= 0.34 else "mid"
+
+    S, W = [], []
+    if lvl(poss) == "high":
+        S.append("Controls the ball and dictates tempo.")
+    elif lvl(poss) == "low":
+        S.append("Comfortable without the ball; soaks up pressure.")
+        W.append("Cedes possession and territory.")
+    if lvl(line) == "high":
+        S.append("High line compresses the pitch and pins opponents back.")
+        W.append("Space in behind — vulnerable to pace and through-balls.")
+    elif lvl(line) == "low":
+        S.append("Deep, compact block — hard to break down centrally.")
+        W.append("Invites sustained pressure; little territory.")
+    if lvl(press) == "high":
+        S.append("Aggressive high press to win the ball early.")
+        W.append("If the press is beaten, large gaps open up.")
+    elif lvl(press) == "low":
+        S.append("Holds shape and conserves energy.")
+        W.append("Gives opponents time to build unopposed.")
+    if lvl(width) == "high":
+        S.append("Stretches play and attacks through the flanks.")
+    elif lvl(width) == "low":
+        S.append("Narrow shape congests the central zones.")
+        W.append("Little natural width to stretch a set block.")
+    if lvl(direct) == "high":
+        S.append("Direct and vertical — fast in transition.")
+    elif lvl(direct) == "low":
+        S.append("Methodical, patient build-up.")
+
+    style = ("Possession" if lvl(poss) == "high"
+             else "Counter-attacking" if lvl(poss) == "low" else "Balanced")
+    shape = ("high press" if lvl(press) == "high"
+             else "low block" if lvl(line) == "low" else "measured pressing")
+    return {"summary": f"{style} side, {shape}.", "strengths": S, "weaknesses": W}
 
 
 # --------------------------------------------------------------------------- #
@@ -149,6 +311,29 @@ def _selftest(a: str = "ESP", b: str = "ENG") -> None:
           f"   E[goals] {s['eg_home']:.2f}-{s['eg_away']:.2f}")
 
 
+def _pitch_probe(nation: str = "ESP", view: str = "possession") -> None:
+    con, P = setup()
+    try:
+        team = assemble_team(con, nation, P)
+    finally:
+        con.close()
+    if not team:
+        raise SystemExit(f"could not assemble {nation}")
+    p = float(team["axes"]["possession"])
+    print(f"{nation} {team['formation']}  view={view}  possession p={p:.3f}  "
+          f"(pitch {PITCH_LEN:.0f}x{PITCH_WID:.0f})\n")
+    print(f"  {'slot':>4} {'code':>4} {'grp':>4} {'ovr':>3} {'band':>5} {'lane':>5} "
+          f"{'x':>6} {'y':>6}  player")
+    for t in pitch_layout(team, view):
+        print(f"  {t['slot_no']:>4} {t['position_code']:>4} {t['group']:>4} "
+              f"{(t['ovr'] or 0):>3} {t['band']:>5.2f} {t['lane']:>5.2f} "
+              f"{t['x']:>6.1f} {t['y']:>6.1f}  {t['name']}")
+
+
 if __name__ == "__main__":
     a = sys.argv[1:]
-    _selftest(*(a[:2] if len(a) >= 2 else ()))
+    if a and a[0] == "--pitch":
+        _pitch_probe(a[1] if len(a) > 1 else "ESP",
+                     a[2] if len(a) > 2 else "possession")
+    else:
+        _selftest(*(a[:2] if len(a) >= 2 else ()))
