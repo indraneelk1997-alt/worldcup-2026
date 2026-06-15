@@ -199,6 +199,34 @@ SLOT_GROUP = {
     "RAM": "FWD", "LAM": "FWD",
 }
 
+# slot position_code -> (primary eligibility role, [fallback roles], flank).
+# Item 9 (docs/item9_xi_selection.md §5b). Roles are the folded families in
+# squad_position_eligibility; flank drives the RCB/LCB foot/lean split only
+# (the other side-specific slots already carry side in the role, e.g. WIDE_L).
+SLOT_ROLE = {
+    "GK":  ("GK",     [],                       "C"),
+    "RCB": ("CB",     ["RB"],                    "R"),
+    "LCB": ("CB",     ["LB"],                    "L"),
+    "CB":  ("CB",     [],                        "C"),
+    "RB":  ("RB",     ["DM", "CB"],              "R"),
+    "RWB": ("RB",     ["WIDE_R", "CB"],          "R"),
+    "LB":  ("LB",     ["DM", "CB"],              "L"),
+    "LWB": ("LB",     ["WIDE_L", "CB"],          "L"),
+    "DM":  ("DM",     ["CM"],                    "C"),
+    "RCM": ("CM",     ["DM", "CAM"],             "R"),
+    "CM":  ("CM",     ["DM", "CAM"],             "C"),
+    "LCM": ("CM",     ["DM", "CAM"],             "L"),
+    "CAM": ("CAM",    ["CM"],                    "C"),
+    "RM":  ("WIDE_R", ["CAM", "ST"],             "R"),
+    "RW":  ("WIDE_R", ["CAM", "ST"],             "R"),
+    "RAM": ("WIDE_R", ["CAM", "ST"],             "R"),
+    "LM":  ("WIDE_L", ["CAM", "ST"],             "L"),
+    "LW":  ("WIDE_L", ["CAM", "ST"],             "L"),
+    "LAM": ("WIDE_L", ["CAM", "ST"],             "L"),
+    "ST":  ("ST",     ["WIDE_L", "WIDE_R", "CAM"], "C"),
+    "FW":  ("ST",     ["WIDE_L", "WIDE_R", "CAM"], "C"),
+}
+
 
 def selection_scores(con, quality_w: float = 0.6) -> dict:
     """squad_row_id -> selection score = quality_w * adjusted-role-rating(pct) +
@@ -221,47 +249,112 @@ def selection_scores(con, quality_w: float = 0.6) -> dict:
     return dict(zip(df["squad_row_id"], df["score"]))
 
 
-def autopick_xi(con, nation: str, formation: str = "4-3-3",
-                scores: dict | None = None) -> tuple[dict, dict, dict]:
-    """Greedy best-XI: each outfield slot -> top unused player in the slot's group by
-    `scores` (selection_scores: quality x caps blend), else raw caps. GK slot left
-    unfilled (parked board; GK handled separately for conversion). Falls back to any
-    remaining player if a group runs short.
-    -> (xi_ea {slot:ea_id}, slot_to_sid {slot:squad_row_id}, names {slot:name})."""
-    slots = con.execute(
-        "SELECT slot_no, position_code FROM formation_slots WHERE formation=? "
-        "ORDER BY slot_no", [formation]).fetchall()
+def _foot_side(foot: str | None) -> str | None:
+    return {"Right": "R", "Left": "L"}.get(foot or "")
+
+
+def _position_fit(pc: str, elig: dict, cb_lean: str | None,
+                  foot: str | None) -> float:
+    """Fit of a player (his eligibility dict {role:(eligible,is_modal)}) to slot
+    `pc`. 1.0 modal+eligible primary, 0.7 eligible primary, 0.4 eligible fallback,
+    0.15 out-of-position (still allowed so a thin squad fields 11). RCB/LCB side
+    is broken by StatsBomb cb_lean else preferred foot (x0.85 on mismatch)."""
+    primary, fallbacks, flank = SLOT_ROLE.get(pc, (None, [], "C"))
+    pe = elig.get(primary)
+    if pe and pe[0] and pe[1]:
+        base = 1.0
+    elif pe and pe[0]:
+        base = 0.7
+    elif any(elig.get(fb, (False, False))[0] for fb in fallbacks):
+        base = 0.4
+    else:
+        base = 0.15
+    factor = 1.0
+    if pc in ("RCB", "LCB"):
+        side = cb_lean or _foot_side(foot)      # StatsBomb lean beats foot
+        if side and side != flank:
+            factor = 0.85
+    return base * factor
+
+
+def _load_nation_players(con, nation: str) -> list:
+    """[(sid, pdata)] for a nation's outfielders: ea_id, name, foot, eligibility
+    dict {role:(eligible,is_modal)} and StatsBomb cb_lean. Cacheable by caller."""
     rows = con.execute(
-        "SELECT s.squad_row_id, s.ea_id, s.player_name, s.primary_position_group, s.caps "
-        "FROM wc2026_squad s JOIN player_adjusted_attributes_wide w "
-        "ON w.squad_row_id = s.squad_row_id "
+        "SELECT s.squad_row_id, s.ea_id, s.player_name, ea.preferred_foot, "
+        "       e.role, e.eligible, e.is_modal, e.cb_lean "
+        "FROM wc2026_squad s "
+        "JOIN squad_position_eligibility e ON e.squad_row_id = s.squad_row_id "
+        "LEFT JOIN ea_fc26_player ea ON ea.ea_id = s.ea_id "
         "WHERE s.nation_code=? AND s.primary_position_group IN ('DEF','MID','FWD')",
         [nation]).fetchall()
-    key = (lambda r: scores.get(r[0], 0.0)) if scores else (lambda r: r[4] or 0)
-    rows = sorted(rows, key=key, reverse=True)
-    pools = {"DEF": [], "MID": [], "FWD": []}
-    for sid, ea, name, grp, _caps in rows:
-        pools[grp].append((sid, ea, name))
-    flat = [(sid, ea, name) for sid, ea, name, _, _ in rows]   # score-sorted fallback
-    used, xi_ea, slot_to_sid, names = set(), {}, {}, {}
+    players: dict[int, dict] = {}
+    for sid, ea, name, foot, role, eligible, modal, lean in rows:
+        p = players.setdefault(sid, dict(ea=ea, name=name, foot=foot,
+                                         elig={}, cb_lean=None))
+        p["elig"][role] = (bool(eligible), bool(modal))
+        if lean:
+            p["cb_lean"] = lean
+    return list(players.items())
 
-    def take(pool):
-        for sid, ea, name in pool:
-            if sid not in used:
-                used.add(sid)
-                return sid, ea, name
-        return None
 
-    for slot_no, pc in slots:
-        grp = SLOT_GROUP.get(pc)
-        if grp == "GK" or grp is None:
-            continue
-        pick = take(pools[grp]) or take(flat)
-        if pick is None:
-            continue                            # squad too small (shouldn't happen)
-        sid, ea, name = pick
-        xi_ea[slot_no], slot_to_sid[slot_no], names[slot_no] = ea, sid, name
+def _assign_xi(con, nation, formation, scores, plist=None):
+    """Core position-aware assignment. -> (xi_ea, slot_to_sid, names, total_fit).
+    fit = (selection_score+1) x position_fit(slot, player); slots assigned GLOBALLY
+    via Hungarian (scipy) so multi-eligible stars aren't greedily mis-bound."""
+    import numpy as np
+    from scipy.optimize import linear_sum_assignment
+
+    slots = [(sn, pc) for sn, pc in con.execute(
+        "SELECT slot_no, position_code FROM formation_slots WHERE formation=? "
+        "ORDER BY slot_no", [formation]).fetchall()
+        if SLOT_GROUP.get(pc) not in (None, "GK")]      # outfield only
+    if plist is None:
+        plist = _load_nation_players(con, nation)
+    if not plist or not slots:
+        return {}, {}, {}, 0.0
+
+    fit = np.zeros((len(slots), len(plist)))
+    for i, (_sn, pc) in enumerate(slots):
+        for j, (_sid, p) in enumerate(plist):
+            pf = _position_fit(pc, p["elig"], p["cb_lean"], p["foot"])
+            fit[i, j] = (scores.get(_sid, 0.0) + 1.0) * pf
+
+    rows_i, cols_j = linear_sum_assignment(fit, maximize=True)
+    xi_ea, slot_to_sid, names = {}, {}, {}
+    for i, j in zip(rows_i, cols_j):
+        slot_no = slots[i][0]
+        sid, p = plist[j]
+        xi_ea[slot_no], slot_to_sid[slot_no], names[slot_no] = p["ea"], sid, p["name"]
+    total_fit = float(fit[rows_i, cols_j].sum())
+    return xi_ea, slot_to_sid, names, total_fit
+
+
+def autopick_xi(con, nation: str, formation: str = "4-3-3",
+                scores: dict | None = None) -> tuple[dict, dict, dict]:
+    """Position-aware best XI (item 9). GK slot left unfilled (handled separately
+    for conversion). -> (xi_ea {slot:ea_id}, slot_to_sid {slot:sid}, names)."""
+    if scores is None:
+        scores = selection_scores(con)
+    xi_ea, slot_to_sid, names, _ = _assign_xi(con, nation, formation, scores)
     return xi_ea, slot_to_sid, names
+
+
+def best_formation(con, nation: str, scores: dict | None = None,
+                   formations: list[str] | None = None) -> tuple[str, float, dict]:
+    """Pick the formation whose best XI maximises total assignment fit -- i.e. the
+    shape this squad's players fit best (back-3 for CB-rich squads, etc.). v1
+    objective = assignment fit (cheap); a model-index objective is banked.
+    -> (formation, total_fit, {formation: fit} for all candidates)."""
+    if scores is None:
+        scores = selection_scores(con)
+    if formations is None:
+        formations = [r[0] for r in con.execute(
+            "SELECT formation FROM formations ORDER BY formation").fetchall()]
+    plist = _load_nation_players(con, nation)           # load once, reuse per shape
+    fits = {f: _assign_xi(con, nation, f, scores, plist)[3] for f in formations}
+    best = max(fits, key=fits.get) if fits else "4-3-3"
+    return best, fits.get(best, 0.0), fits
 
 
 def build_roster_from_board(con, board: dict, zone_id: int, slot_to_sid: dict,
@@ -418,16 +511,39 @@ def demo_real():
 
 
 def demo_autoxi():
-    """Sanity-check the greedy best-XI selection on a few nations."""
+    """Sanity-check position-aware best-XI: prints each slot's position_code -> the
+    assigned player, so placement (side/role) is verifiable. Includes top sides plus
+    a few non-top-5 squads to exercise the EA/group fallbacks."""
     import duckdb
     con = duckdb.connect(str(DB_PATH), read_only=True)
     scores = selection_scores(con)
-    for nat in ("ENG", "BRA", "FRA", "ARG", "ESP"):
+    for nat in ("ENG", "ESP", "BRA", "FRA", "ARG", "USA", "JPN", "MAR"):
+        slot_pc = dict(con.execute(
+            "SELECT slot_no, position_code FROM formation_slots WHERE formation='4-3-3'"
+        ).fetchall())
         _, _, names = autopick_xi(con, nat, "4-3-3", scores)
         gk_score, gk_name = load_gk_score(con, nat)
-        xi = ", ".join(names[s] for s in sorted(names))
+        line = "  ".join(f"{slot_pc[s]}:{names[s]}" for s in sorted(names))
         gk = f"{gk_name} ({gk_score:.0f})" if gk_name else "none"
-        print(f"  {nat} 4-3-3 (+GK {gk}):\n     {xi}")
+        print(f"  {nat} 4-3-3 (+GK {gk}):\n     {line}")
+    con.close()
+
+
+def demo_best_formation():
+    """Auto-pick the best-fit formation per nation; also flags any formation_slots
+    code not covered by SLOT_ROLE (which would unfairly penalise that shape)."""
+    import duckdb
+    con = duckdb.connect(str(DB_PATH), read_only=True)
+    codes = [r[0] for r in con.execute(
+        "SELECT DISTINCT position_code FROM formation_slots").fetchall()]
+    missing = [c for c in codes if c not in SLOT_ROLE]
+    print(f"formation_slots codes not in SLOT_ROLE: {missing or 'none'}\n")
+    scores = selection_scores(con)
+    for nat in ("ENG", "ESP", "BRA", "FRA", "ARG", "USA", "JPN", "MAR"):
+        best, fit, fits = best_formation(con, nat, scores)
+        top = "  ".join(f"{f}:{v:.0f}" for f, v in
+                        sorted(fits.items(), key=lambda kv: -kv[1])[:3])
+        print(f"  {nat}: best={best} ({fit:.0f})   top3: {top}")
     con.close()
 
 
@@ -659,7 +775,9 @@ def main():
     ap.add_argument("--demo", action="store_true", help="synthetic numbers test")
     ap.add_argument("--fold-table", action="store_true", help="print 30->9 fold")
     ap.add_argument("--demo-real", action="store_true", help="ENG vs NED real sweep")
-    ap.add_argument("--autoxi", action="store_true", help="validate greedy best-XI")
+    ap.add_argument("--autoxi", action="store_true", help="validate position-aware best-XI")
+    ap.add_argument("--best-formation", action="store_true",
+                    help="auto-pick best-fit formation per nation")
     ap.add_argument("--fit-volume", action="store_true", help="round-robin VOLUME fit")
     ap.add_argument("--scoreline", nargs=2, metavar=("A", "B"),
                     help="demo bivariate-Poisson scoreline, FIFA3 A vs B")
@@ -676,6 +794,8 @@ def main():
         demo_real()
     elif a.autoxi:
         demo_autoxi()
+    elif a.best_formation:
+        demo_best_formation()
     elif a.fit_volume:
         fit_volume()
     elif a.scoreline:

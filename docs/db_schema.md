@@ -1,8 +1,8 @@
 # DuckDB schema reference
 
-_Generated: 2026-06-13T01:01:39_  
+_Generated: 2026-06-15T20:11:03_  
 _DB: `data/processed/worldcup.duckdb`_  
-_Tables: 41_  
+_Tables: 42_  
 
 
 This file is auto-generated. Do not edit by hand. Regenerate with:
@@ -1089,6 +1089,38 @@ uv run python src/tools/dump_db_schema.py
   formation = None
 ```
 
+### `squad_position_eligibility`
+
+**Rows**: 3,177
+
+| Column | Type | Nullable | PK |
+|---|---|---|---|
+| `squad_row_id` | `BIGINT` | YES |  |
+| `role` | `VARCHAR` | YES |  |
+| `minutes` | `DOUBLE` | YES |  |
+| `minutes_share` | `DOUBLE` | YES |  |
+| `is_modal` | `BOOLEAN` | YES |  |
+| `eligible` | `BOOLEAN` | YES |  |
+| `source_mix` | `VARCHAR` | YES |  |
+| `cb_lean` | `VARCHAR` | YES |  |
+| `basis` | `VARCHAR` | YES |  |
+
+**Declared foreign keys**: none
+
+**Sample row**:
+
+```
+  squad_row_id = 1
+  role = 'GK'
+  minutes = 1303.0
+  minutes_share = 1.0
+  is_modal = True
+  eligible = True
+  source_mix = 'fbref,statsbomb'
+  cb_lean = None
+  basis = 'empirical'
+```
+
 ### `squad_position_profile`
 
 **Rows**: 1,772
@@ -1798,6 +1830,16 @@ uv run python src/tools/dump_db_schema.py
 - `team_season_strength_v103`
 - `zone_xt`
 
+### `minutes` (7 tables)
+
+- `best_xi`
+- `player_match_fbref`
+- `player_match_stats`
+- `player_season_stats`
+- `squad_position_eligibility`
+- `squad_position_profile`
+- `statsbomb_player_match`
+
 ### `position_class` (7 tables)
 
 - `best_xi`
@@ -1816,15 +1858,6 @@ uv run python src/tools/dump_db_schema.py
 - `team_match_fbref` *(PK)*
 - `team_match_predictions_b12` *(PK)*
 - `team_match_stats` *(PK)*
-
-### `minutes` (6 tables)
-
-- `best_xi`
-- `player_match_fbref`
-- `player_match_stats`
-- `player_season_stats`
-- `squad_position_profile`
-- `statsbomb_player_match`
 
 ### `fixture_id` (5 tables)
 
@@ -1882,6 +1915,14 @@ uv run python src/tools/dump_db_schema.py
 - `statsbomb_match`
 - `wc2026_squad`
 
+### `squad_row_id` (5 tables)
+
+- `player_adjusted_attributes` *(PK)*
+- `player_adjusted_attributes_wide`
+- `squad_position_eligibility`
+- `squad_position_profile`
+- `wc2026_squad` *(PK)*
+
 ### `away_team` (4 tables)
 
 - `fixtures`
@@ -1930,13 +1971,6 @@ uv run python src/tools/dump_db_schema.py
 - `statsbomb_match`
 - `statsbomb_player_match`
 - `team_playstyle_empirical`
-
-### `squad_row_id` (4 tables)
-
-- `player_adjusted_attributes` *(PK)*
-- `player_adjusted_attributes_wide`
-- `squad_position_profile`
-- `wc2026_squad` *(PK)*
 
 ### `team_id` (4 tables)
 

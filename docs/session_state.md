@@ -3,8 +3,8 @@
 > **Fast-changing.** This is "where we are right now." Updated at the end
 > of each working session. For permanent facts/rules, see `Claude.md`.
 
-**Last updated:** end of S41 (2026-06-15)
-**Current version line:** **Dashboard V1 (vertical formation pitch + strategy) BUILT & accepted (S41).** V0 skeleton banked S40. Chessboard model COMPLETE — items 1–8 all DONE & validated.
+**Last updated:** end of S42 (2026-06-15)
+**Current version line:** **S42: position-aware XI selection + best-fit formation BUILT & verified.** Item 9 (`docs/item9_xi_selection.md`). Replaced group-only `autopick_xi` with empirical, side-aware slotting off a new `squad_position_eligibility` table (modal/>20%-minutes rule across Understat+FBref+StatsBomb, EA + coarse-group fallbacks) and Hungarian assignment. Headline bugs dead (Cucurella→LB not RCB, Kane→ST). `best_formation` auto-picks the max-fit shape per squad (FRA/ARG→3-5-2, ENG→4-1-4-1…). **DB now 42 tables** (added `squad_position_eligibility`; first DDL since S35 — a derived rollup, no FK). `db_schema.md` needs regen. Dashboard V1 (vertical formation pitch + strategy) BUILT & accepted (S41). Chessboard model COMPLETE — items 1–8 all DONE & validated.
 Item 8 step **E (bivariate Poisson → scoreline)** built + validated S38: a full
 team-vs-team matchup now runs end to end (adjusted attrs → occupancy boards → zone
 battles → aggregated index → VOLUME → bivariate-Poisson scoreline). Acceptance test
@@ -12,6 +12,111 @@ battles → aggregated index → VOLUME → bivariate-Poisson scoreline). Accept
 band). `λ₃=0` LOCKED; `VOLUME=199.4` promoted to `zone_battle.json`. DB unchanged at
 **41 tables** (read-only orchestration; no DDL). **Next agenda: dashboard visual design**
 (+ full-tournament sim). Design doc: `docs/item8_aggregation.md`.
+
+## S42 outcome — position-aware XI selection (item 9) + best-fit formation
+
+Shell-relay throughout (Indraneel ran every command). Design-before-code: `docs/
+item9_xi_selection.md` written + agreed before implementation. **First DDL since
+S35** — one new derived table (`squad_position_eligibility`), built by a loader,
+no FK. Headline S42 task DONE & verified; formation model side DONE.
+
+### What was built
+- **`data/config/position_source_map.json`** — maps every source's raw position
+  vocab (Understat, FBref, StatsBomb, EA) → canonical code + folded **role**
+  (`GK·CB·RB·LB·DM·CM·CAM·WIDE_R·WIDE_L·ST`) + flank + StatsBomb `cb_lean`.
+  Within-family folding (`LW≡LAM≡LM`, `LB≡LWB`) is the deliberate inclusion
+  mechanism. `src/load/v2_ingest/validate_position_map.py` — PASS (every observed
+  source code mapped; codes/roles valid).
+- **`squad_position_eligibility`** table via `src/load/v2_ingest/
+  build_position_eligibility.py`. Per squad player: minutes-share per role pooled
+  across all 3 empirical sources, **modal + >20%-minutes** eligibility, **≥270-min
+  floor** → else **EA fallback** (position+alt_positions) → else **coarse
+  `primary_position_group` fallback**. 1247 players (666 empirical / 223 EA / 358
+  group). CREATE OR REPLACE (rebuildable; touches only its own table).
+- **`autopick_xi` rewritten** (`zone_aggregate.py`): `_assign_xi` builds a
+  slot×player fit matrix (`(selection_score+1)·position_fit`) and solves it with
+  **Hungarian** (`scipy.linear_sum_assignment`, `maximize=True`) — global, so
+  multi-eligible stars aren't greedily mis-bound. `SLOT_ROLE` map (slot→primary
+  role+fallbacks+flank); RCB/LCB split by StatsBomb `cb_lean` else `preferred_foot`
+  (×0.85 mismatch). Same return contract (GK still parked).
+- **`best_formation`** loops candidate formations, returns the max total-fit shape.
+  `--best-formation` CLI. `demo_autoxi` now prints `position_code:player` per slot.
+
+### Key findings (verified, banked)
+- **Identity is split across id spaces:** `wc2026_squad.our_player_id` is FBref's
+  space; Understat uses its own (zero overlap). Fixed via a **name crosswalk**
+  through `players` (both ids share the normalised name) — UNION of `our_player_id`
+  + name-matched ids. Recovered Understat (0→482 squad players); without it, wide
+  players mis-coded central (Rashford read CAM until Understat was joined). 2
+  ambiguous names only.
+- **~50% empirical coverage** (624/1247 any-source). Rest EA/group fallback —
+  by design, but tighter `our_player_id`↔Understat linkage is a real lever.
+- **Formation auto-pick ties role-equivalent shapes** (3-5-2≡5-3-2, 4-3-3≡4-1-4-1)
+  — assignment-fit only sees role composition. Distinguishing them needs the
+  **model-index objective** (banked v2).
+- **Quality ranking, not position, drops Pedri (ESP)/J.Álvarez (ARG)** — the
+  `selection_scores` 0.6 quality / 0.4 caps blend. S37 "blend-weight tunable" lever;
+  player-switch (V2) will let users override.
+
+### Verified (`--autoxi`, full + trimmed DB parity)
+ENG/ESP ≈ real first-choice XIs; Cucurella `LB`, Kane `ST`, Saka `RW`, Rashford
+`LW`; USA/JPN/MAR (fallback-heavy) side-correct. Trimmed dashboard DB rebuilt via
+`make_dashboard_db.py` (exclusion-based → auto-included the new table; 17.6 MB,
+39 tables) → identical XIs (friend parity).
+
+### S42 openers (dashboard surfacing — the remaining formation + switch work)
+1. **model_api passthrough** (CLI-testable, Streamlit-agnostic): expose
+   `best_formation` + the formations list; a **bench/alternatives** function
+   (non-selected eligible players per slot/role, ranked by selection_score) for
+   the switch. Build + verify via CLI before touching `app.py`.
+2. **app.py**: formation dropdown defaulting to the auto-pick; player click →
+   eligible alternatives → swap → recompute (V2 swap path the V1 panel stubbed).
+3. **Regenerate `db_schema.md`** (`src/tools/dump_db_schema.py`) — now 42 tables.
+4. Banked: model-index formation objective; `our_player_id`↔Understat linkage;
+   selection blend-weight tune; Vinícius/Pedri/Álvarez cases.
+
+### Files (S42, uncommitted until the commit below)
+- New: `docs/item9_xi_selection.md`, `data/config/position_source_map.json`,
+  `src/load/v2_ingest/validate_position_map.py`,
+  `src/load/v2_ingest/build_position_eligibility.py`.
+- Modified: `src/load/v2_ingest/zone_aggregate.py` (SLOT_ROLE, _position_fit,
+  _load_nation_players, _assign_xi, autopick_xi, best_formation, demos, CLI),
+  `data/processed/worldcup.duckdb` (+`squad_position_eligibility`),
+  `data/processed/worldcup_dashboard.duckdb` (rebuilt, committed), `docs/session_state.md`.
+- **DDL:** +1 derived table (42 total). `db_schema.md` regen owed.
+
+### S42 commit
+```
+S42: position-aware XI selection (item 9) + best-fit formation
+
+Replace group-only autopick_xi with empirical, side-aware slotting. New derived
+table squad_position_eligibility: per squad player, minutes-share per folded role
+pooled across Understat+FBref+StatsBomb (modal + >20% rule, >=270-min floor),
+with EA-position then coarse-group fallbacks (1247 players: 666 empirical/223 EA/
+358 group). position_source_map.json maps all 4 sources' vocab -> canonical
+code+role+flank+cb_lean; validate_position_map.py asserts full coverage (PASS).
+
+Linkage fix: our_player_id is FBref's id space, Understat uses its own (zero
+overlap) -> name crosswalk via players recovers Understat (0->482 squad players;
+fixes wide-players-read-central, e.g. Rashford CAM->WIDE_L).
+
+autopick_xi: _assign_xi builds slot x player fit = (selection_score+1)*
+position_fit and solves via Hungarian (scipy linear_sum_assignment). SLOT_ROLE
+slot->role map; RCB/LCB split by StatsBomb cb_lean else preferred_foot.
+best_formation picks max total-fit shape per squad (FRA/ARG 3-5-2, ENG 4-1-4-1).
+
+Verified --autoxi on full + trimmed DB (parity): Cucurella LB, Kane ST, Saka RW,
+Rashford LW; ENG/ESP ~ real XIs. make_dashboard_db rebuilt (auto-included the new
+table, 17.6 MB / 39 tables).
+
+DDL: +squad_position_eligibility (42 tables; derived, no FK). db_schema.md regen owed.
+
+New: docs/item9_xi_selection.md, data/config/position_source_map.json,
+     src/load/v2_ingest/{validate_position_map,build_position_eligibility}.py
+Modified: src/load/v2_ingest/zone_aggregate.py, data/processed/worldcup.duckdb,
+          data/processed/worldcup_dashboard.duckdb, docs/session_state.md
+Refs: docs/item9_xi_selection.md, docs/session_state.md
+```
 
 ## S41 outcome — dashboard V1 (vertical formation pitch + strategy)
 

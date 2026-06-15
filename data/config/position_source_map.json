@@ -1,0 +1,88 @@
+{
+  "_doc": "Item-9 XI selection (docs/item9_xi_selection.md). Maps each data source's raw position vocabulary onto our canonical positions-table codes + the role taxonomy used for the >20% minutes-share eligibility test. role = folded family (the eligibility level); code = fine canonical code (the slot-matching level); flank = C/L/R; cb_lean = StatsBomb-only L/R centre-back side, feeds the RCB/LCB split. Authored S42 against the FULL observed vocab of player_match_all (understat/fbref) and statsbomb_event. Validate with validate_position_map.py before use.",
+  "roles": ["GK", "CB", "RB", "LB", "DM", "CM", "CAM", "WIDE_R", "WIDE_L", "ST"],
+
+  "_drop_doc": "Appearances with no attributable position. Excluded from BOTH numerator and denominator of the minutes-share (we threshold over minutes where position is known).",
+  "drop": ["Sub", "Substitute"],
+
+  "_fbref_combo_doc": "FBref tags a multi-position match as 'POS1,POS2' (e.g. 'FW,MF'). The loader splits on ',' and maps the FIRST token (the listed primary). v1 simplification; could split minutes later. Combo strings are therefore NOT keys here.",
+
+  "understat": {
+    "GK":  {"code": "GK",  "role": "GK",     "flank": "C"},
+    "DC":  {"code": "CB",  "role": "CB",     "flank": "C"},
+    "DR":  {"code": "RB",  "role": "RB",     "flank": "R"},
+    "DL":  {"code": "LB",  "role": "LB",     "flank": "L"},
+    "DMC": {"code": "DM",  "role": "DM",     "flank": "C"},
+    "DMR": {"code": "DM",  "role": "DM",     "flank": "R"},
+    "DML": {"code": "DM",  "role": "DM",     "flank": "L"},
+    "MC":  {"code": "CM",  "role": "CM",     "flank": "C"},
+    "MR":  {"code": "RM",  "role": "WIDE_R", "flank": "R"},
+    "ML":  {"code": "LM",  "role": "WIDE_L", "flank": "L"},
+    "AMC": {"code": "CAM", "role": "CAM",    "flank": "C"},
+    "AMR": {"code": "RAM", "role": "WIDE_R", "flank": "R"},
+    "AML": {"code": "LAM", "role": "WIDE_L", "flank": "L"},
+    "FW":  {"code": "ST",  "role": "ST",     "flank": "C"},
+    "FWR": {"code": "RW",  "role": "WIDE_R", "flank": "R"},
+    "FWL": {"code": "LW",  "role": "WIDE_L", "flank": "L"}
+  },
+
+  "fbref": {
+    "GK": {"code": "GK",  "role": "GK",     "flank": "C"},
+    "CB": {"code": "CB",  "role": "CB",     "flank": "C"},
+    "DF": {"code": "DF",  "role": "CB",     "flank": "C"},
+    "RB": {"code": "RB",  "role": "RB",     "flank": "R"},
+    "LB": {"code": "LB",  "role": "LB",     "flank": "L"},
+    "DM": {"code": "DM",  "role": "DM",     "flank": "C"},
+    "CM": {"code": "CM",  "role": "CM",     "flank": "C"},
+    "MF": {"code": "MF",  "role": "CM",     "flank": "C"},
+    "AM": {"code": "CAM", "role": "CAM",    "flank": "C"},
+    "RM": {"code": "RM",  "role": "WIDE_R", "flank": "R"},
+    "LM": {"code": "LM",  "role": "WIDE_L", "flank": "L"},
+    "RW": {"code": "RW",  "role": "WIDE_R", "flank": "R"},
+    "LW": {"code": "LW",  "role": "WIDE_L", "flank": "L"},
+    "FW": {"code": "ST",  "role": "ST",     "flank": "C"}
+  },
+
+  "_ea_doc": "EA FC26 position codes (ea_fc26_player.position + alt_positions). Fallback source for the ~50% of squad players with <270 min empirical data. EA has no L/R centre-back and uses CDM for the holding role. No minutes -> synthetic shares in the loader (primary 1.0, each alt discounted); for EA-basis rows `eligible` follows EA's listed positions, not the 20% rule.",
+  "ea": {
+    "GK":  {"code": "GK",  "role": "GK",     "flank": "C"},
+    "CB":  {"code": "CB",  "role": "CB",     "flank": "C"},
+    "RB":  {"code": "RB",  "role": "RB",     "flank": "R"},
+    "LB":  {"code": "LB",  "role": "LB",     "flank": "L"},
+    "CDM": {"code": "DM",  "role": "DM",     "flank": "C"},
+    "CM":  {"code": "CM",  "role": "CM",     "flank": "C"},
+    "CAM": {"code": "CAM", "role": "CAM",    "flank": "C"},
+    "RM":  {"code": "RM",  "role": "WIDE_R", "flank": "R"},
+    "LM":  {"code": "LM",  "role": "WIDE_L", "flank": "L"},
+    "RW":  {"code": "RW",  "role": "WIDE_R", "flank": "R"},
+    "LW":  {"code": "LW",  "role": "WIDE_L", "flank": "L"},
+    "ST":  {"code": "ST",  "role": "ST",     "flank": "C"}
+  },
+
+  "statsbomb": {
+    "Goalkeeper":                {"code": "GK",  "role": "GK",     "flank": "C"},
+    "Center Back":               {"code": "CB",  "role": "CB",     "flank": "C"},
+    "Right Center Back":         {"code": "RCB", "role": "CB",     "flank": "R", "cb_lean": "R"},
+    "Left Center Back":          {"code": "LCB", "role": "CB",     "flank": "L", "cb_lean": "L"},
+    "Right Back":                {"code": "RB",  "role": "RB",     "flank": "R"},
+    "Left Back":                 {"code": "LB",  "role": "LB",     "flank": "L"},
+    "Right Wing Back":           {"code": "RWB", "role": "RB",     "flank": "R"},
+    "Left Wing Back":            {"code": "LWB", "role": "LB",     "flank": "L"},
+    "Center Defensive Midfield": {"code": "DM",  "role": "DM",     "flank": "C"},
+    "Right Defensive Midfield":  {"code": "DM",  "role": "DM",     "flank": "R"},
+    "Left Defensive Midfield":   {"code": "DM",  "role": "DM",     "flank": "L"},
+    "Center Midfield":           {"code": "CM",  "role": "CM",     "flank": "C"},
+    "Right Center Midfield":     {"code": "RCM", "role": "CM",     "flank": "R"},
+    "Left Center Midfield":      {"code": "LCM", "role": "CM",     "flank": "L"},
+    "Center Attacking Midfield": {"code": "CAM", "role": "CAM",    "flank": "C"},
+    "Right Attacking Midfield":  {"code": "RAM", "role": "WIDE_R", "flank": "R"},
+    "Left Attacking Midfield":   {"code": "LAM", "role": "WIDE_L", "flank": "L"},
+    "Right Midfield":            {"code": "RM",  "role": "WIDE_R", "flank": "R"},
+    "Left Midfield":             {"code": "LM",  "role": "WIDE_L", "flank": "L"},
+    "Right Wing":                {"code": "RW",  "role": "WIDE_R", "flank": "R"},
+    "Left Wing":                 {"code": "LW",  "role": "WIDE_L", "flank": "L"},
+    "Center Forward":            {"code": "ST",  "role": "ST",     "flank": "C"},
+    "Right Center Forward":      {"code": "ST",  "role": "ST",     "flank": "C"},
+    "Left Center Forward":       {"code": "ST",  "role": "ST",     "flank": "C"}
+  }
+}
