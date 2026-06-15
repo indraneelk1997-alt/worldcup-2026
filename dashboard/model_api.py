@@ -52,6 +52,7 @@ if "WC2026_DB" not in os.environ:
 from src.load.v2_ingest.zone_aggregate import (          # noqa: E402
     _scoreline_setup, autopick_xi, load_gk_score, SLOT_GROUP,
     _lambda_pair, bivariate_poisson_matrix, _matrix_summary,
+    best_formation, slot_alternatives,
 )
 from src.load.v2_ingest.formation_assembly import assemble, team_boards  # noqa: E402
 from src.load.v2_ingest.kernel_transforms import (       # noqa: E402
@@ -86,7 +87,31 @@ def nation_names() -> dict[str, str]:
     return {code: name for name, code in raw.items() if not name.startswith("_")}
 
 
-def assemble_team(con, nation: str, P: dict, formation: str = DEFAULT_FORMATION):
+def formations(con) -> list[str]:
+    """All formation codes the model knows (the formation-knob dropdown options)."""
+    return [r[0] for r in con.execute(
+        "SELECT formation FROM formations ORDER BY formation").fetchall()]
+
+
+def auto_formation(con, nation: str, P: dict) -> str:
+    """The best-fit formation for a squad (item 9 best_formation) -- the dropdown
+    default. Cheap: assignment-fit over the candidate shapes."""
+    return best_formation(con, nation, P["scores"])[0]
+
+
+def alternatives(con, nation: str, formation: str, slot_no: int, P: dict,
+                 exclude_ea: tuple = ()) -> list[tuple]:
+    """Eligible swap candidates for one slot, ranked best-fit first (the swap
+    dropdown). -> [(ea_id, squad_row_id, name, score, fit)]."""
+    row = con.execute("SELECT position_code FROM formation_slots "
+                      "WHERE formation=? AND slot_no=?", [formation, slot_no]).fetchone()
+    if not row:
+        return []
+    return slot_alternatives(con, nation, row[0], P["scores"], tuple(exclude_ea))
+
+
+def assemble_team(con, nation: str, P: dict, formation: str = DEFAULT_FORMATION,
+                  xi_override: dict | None = None):
     """Auto-pick the best XI -> full team bundle for the dashboard.
 
     Richer than the model's _assemble_team: also keeps the player NAMES and the
@@ -104,6 +129,15 @@ def assemble_team(con, nation: str, P: dict, formation: str = DEFAULT_FORMATION)
     xi_ea, sid, names = autopick_xi(con, nation, formation, P["scores"])
     if not sid:
         return None
+    if xi_override:                          # V2 swap: override slots, refresh meta
+        for slot_no, ea in xi_override.items():
+            if ea is None or slot_no not in xi_ea:
+                continue
+            row = con.execute(
+                "SELECT squad_row_id, player_name FROM wc2026_squad "
+                "WHERE ea_id=? AND nation_code=?", [ea, nation]).fetchone()
+            if row:
+                xi_ea[slot_no], sid[slot_no], names[slot_no] = ea, row[0], row[1]
     axes, slots = assemble(con, formation, nation, P["cfg"], P["fwd"], xi=xi_ea)
     gk_score, gk_name = load_gk_score(con, nation)
     # EA overall ('ovr') for the XI + the GK, for the token brackets / info panel.
@@ -124,17 +158,21 @@ def assemble_team(con, nation: str, P: dict, formation: str = DEFAULT_FORMATION)
 
 
 def matchup(con, nation_a: str, nation_b: str, P: dict,
-            formation: str = DEFAULT_FORMATION, l3: float = 0.0) -> dict:
+            formation_a: str = DEFAULT_FORMATION, formation_b: str | None = None,
+            l3: float = 0.0, xi_a: dict | None = None,
+            xi_b: dict | None = None) -> dict:
     """Full A-vs-B result for the dashboard: assemble both XIs -> lambda-means
-    -> bivariate-Poisson scoreline matrix + W/D/L summary.
+    -> bivariate-Poisson scoreline matrix + W/D/L summary. Each team can take its
+    own formation + XI override (the V2 formation knob / player swap).
 
     Rows of `matrix` = team_a goals, cols = team_b goals (so summary['p_home']
     is team_a's win prob). Raises ValueError if either side can't be assembled.
 
       -> {team_a, team_b, lam_a, lam_b, matrix, summary}
     """
-    ta = assemble_team(con, nation_a, P, formation)
-    tb = assemble_team(con, nation_b, P, formation)
+    formation_b = formation_b or formation_a
+    ta = assemble_team(con, nation_a, P, formation_a, xi_a)
+    tb = assemble_team(con, nation_b, P, formation_b, xi_b)
     if ta is None or tb is None:
         raise ValueError(f"could not assemble {nation_a if ta is None else nation_b}")
     lam_a, lam_b = _lambda_pair(con, ta, tb, P)
@@ -296,7 +334,13 @@ def _selftest(a: str = "ESP", b: str = "ENG") -> None:
     con, P = setup()
     try:
         print(f"nations available: {len(list_nations(con))}")
-        r = matchup(con, a, b, P)
+        fa, fb = auto_formation(con, a, P), auto_formation(con, b, P)
+        print(f"auto formation: {a} {fa} | {b} {fb} | options {formations(con)}")
+        r = matchup(con, a, b, P, fa, fb)
+        sn = sorted(r["team_a"]["names"])[0]                 # exercise swap list
+        alts = alternatives(con, a, fa, sn, P, tuple(r["team_a"]["xi_ea"].values()))
+        print(f"alts for {a} slot {sn} ({r['team_a']['names'][sn]}): "
+              + ", ".join(f"{x[2]}({x[4]:.2f})" for x in alts[:4]))
     finally:
         con.close()
     ta, tb, s = r["team_a"], r["team_b"], r["summary"]

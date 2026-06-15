@@ -4,7 +4,7 @@
 > of each working session. For permanent facts/rules, see `Claude.md`.
 
 **Last updated:** end of S42 (2026-06-15)
-**Current version line:** **S42: position-aware XI selection + best-fit formation BUILT & verified.** Item 9 (`docs/item9_xi_selection.md`). Replaced group-only `autopick_xi` with empirical, side-aware slotting off a new `squad_position_eligibility` table (modal/>20%-minutes rule across Understat+FBref+StatsBomb, EA + coarse-group fallbacks) and Hungarian assignment. Headline bugs dead (Cucurella→LB not RCB, Kane→ST). `best_formation` auto-picks the max-fit shape per squad (FRA/ARG→3-5-2, ENG→4-1-4-1…). **DB now 42 tables** (added `squad_position_eligibility`; first DDL since S35 — a derived rollup, no FK). `db_schema.md` needs regen. Dashboard V1 (vertical formation pitch + strategy) BUILT & accepted (S41). Chessboard model COMPLETE — items 1–8 all DONE & validated.
+**Current version line:** **S42: position-aware XI selection + best-fit formation BUILT & verified.** Item 9 (`docs/item9_xi_selection.md`). Replaced group-only `autopick_xi` with empirical, side-aware slotting off a new `squad_position_eligibility` table (modal/>20%-minutes rule across Understat+FBref+StatsBomb, EA + coarse-group fallbacks) and Hungarian assignment. Headline bugs dead (Cucurella→LB not RCB, Kane→ST). `best_formation` auto-picks the max-fit shape per squad (FRA/ARG→3-5-2, ENG→4-1-4-1…). **DB now 42 tables** (added `squad_position_eligibility`; first DDL since S35 — a derived rollup, no FK; `db_schema.md` regenerated). **Dashboard V2** (same session): info-panel formation dropdown (default auto best-fit) + player swap, both live-recomputing. Player-stats panel is the only V2 piece left. Dashboard V1 (vertical formation pitch + strategy) BUILT & accepted (S41). Chessboard model COMPLETE — items 1–8 all DONE & validated.
 Item 8 step **E (bivariate Poisson → scoreline)** built + validated S38: a full
 team-vs-team matchup now runs end to end (adjusted attrs → occupancy boards → zone
 battles → aggregated index → VOLUME → bivariate-Poisson scoreline). Acceptance test
@@ -115,6 +115,57 @@ New: docs/item9_xi_selection.md, data/config/position_source_map.json,
      src/load/v2_ingest/{validate_position_map,build_position_eligibility}.py
 Modified: src/load/v2_ingest/zone_aggregate.py, data/processed/worldcup.duckdb,
           data/processed/worldcup_dashboard.duckdb, docs/session_state.md
+Refs: docs/item9_xi_selection.md, docs/session_state.md
+```
+
+## S42 cont — dashboard V2 (formation knob + player swap)
+
+Wired the item-9 work into the dashboard (same session). Per-team **formation
+dropdown** as the FIRST knob in the info panel (defaults to the auto best-fit
+`auto_formation`; the 5 playstyle axes + pitch reassemble on change), and a
+**Substitutes / swap** expander (replace any starter with an eligible alternative,
+ranked best-fit, scoreline recomputes). Visual rules respected — pitch palette/
+labels unchanged (GK gold/DEF blue/MID amber/FWD red, dark text, no overlap).
+
+### Mechanics
+- `model_api`: `formations()`, `auto_formation()`, `alternatives()`; `assemble_team`
+  + `matchup` now take per-team formation + optional `xi_override`. Matchup runs
+  **live** (not cached) — depends on per-team formation + overrides, and one
+  assemble+scoreline is cheap; `setup` stays `@st.cache_resource`.
+- `zone_aggregate.slot_alternatives(con, nation, position_code, scores, exclude_ea)`
+  — eligible swap candidates (position_fit > 0.2), ranked.
+- `app.py`: formation in `st.session_state["fmt_<nation>"]` (default auto), XI
+  overrides in `st.session_state["ov"][<nation>]`. CLI self-test extended to
+  exercise the new surface (`uv run python dashboard/model_api.py ESP ENG`).
+
+### Tasks closed
+Position-aware XI ✅, per-team formation ✅, substitutes/swap ✅. Remaining:
+**player-stats panel** (player attribute detail on click — the V2 caption now says
+"coming next") + the banked model refinements (formation model-index objective,
+Understat linkage, blend-weight tune).
+
+### Files (S42 cont — second commit)
+- Modified: `dashboard/model_api.py`, `dashboard/app.py`,
+  `src/load/v2_ingest/zone_aggregate.py` (`slot_alternatives`), `docs/session_state.md`.
+- No DB/DDL change (reads the same 42-table set).
+
+### S42 cont commit
+```
+S42 cont: dashboard V2 — per-team formation knob + player swap
+
+Info panel leads with a Formation dropdown (defaults to auto best-fit; axes +
+pitch reassemble on change) and a Substitutes/swap expander (replace any starter
+with an eligible alternative, ranked best-fit, scoreline recomputes).
+
+model_api: formations(), auto_formation(), alternatives(); assemble_team + matchup
+take per-team formation + xi_override. Matchup computed live (depends on per-team
+formation + overrides); setup stays cached. zone_aggregate.slot_alternatives()
+ranks eligible swap candidates. app.py: fmt_<nation> + ov[<nation>] in session_state.
+
+No DB/DDL change.
+
+Modified: dashboard/model_api.py, dashboard/app.py,
+          src/load/v2_ingest/zone_aggregate.py, docs/session_state.md
 Refs: docs/item9_xi_selection.md, docs/session_state.md
 ```
 

@@ -529,6 +529,26 @@ def demo_autoxi():
     con.close()
 
 
+def slot_alternatives(con, nation: str, position_code: str, scores: dict | None = None,
+                      exclude_ea: tuple = ()) -> list[tuple]:
+    """Eligible swap candidates for a slot's position_code, ranked best-fit first
+    (item 9 dashboard switch). Only players who can actually play the slot
+    (position_fit above the out-of-position floor) are returned.
+    -> [(ea_id, squad_row_id, name, score, fit)]."""
+    if scores is None:
+        scores = selection_scores(con)
+    out = []
+    for sid, p in _load_nation_players(con, nation):
+        if p["ea"] in exclude_ea:
+            continue
+        pf = _position_fit(position_code, p["elig"], p["cb_lean"], p["foot"])
+        if pf <= 0.2:                       # out-of-position -> not a real option
+            continue
+        out.append((p["ea"], sid, p["name"], scores.get(sid, 0.0), pf))
+    out.sort(key=lambda r: -((r[3] + 1.0) * r[4]))
+    return out
+
+
 def demo_best_formation():
     """Auto-pick the best-fit formation per nation; also flags any formation_slots
     code not covered by SLOT_ROLE (which would unfairly penalise that shape)."""

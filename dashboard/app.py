@@ -27,7 +27,7 @@ import streamlit as st                   # noqa: E402
 
 import model_api as api                  # noqa: E402
 
-FORMATION = "4-3-3"      # V0/V1 fixed; formation knob lands in V2
+DEFAULT_FORMATION = "4-3-3"   # setup default; per-team formation chosen in the panel
 GRID = 6                 # scoreline matrix shown for 0..GRID goals each side
 
 FILL = {"GK": "#fde68a", "DEF": "#bfdbfe", "MID": "#fed7aa", "FWD": "#fecaca"}
@@ -58,10 +58,8 @@ def get_labels() -> dict[str, str]:
     return api.nation_names()
 
 
-@st.cache_data
-def get_matchup(_con, _P, nation_a: str, nation_b: str, formation: str):
-    """Cached on the hashable args; _con/_P are skipped (underscore prefix)."""
-    return api.matchup(_con, nation_a, nation_b, _P, formation)
+# Matchup is computed live (not cached): it now depends on per-team formation +
+# XI overrides, and a single assemble+scoreline is cheap. setup stays cached.
 
 
 # --- vertical pitch rendering ----------------------------------------------- #
@@ -167,16 +165,50 @@ def style_scoreline(M: np.ndarray, a: str, b: str):
 
 
 # --- info / strategy panels ------------------------------------------------- #
-def render_panel(team: dict, view: str, name: str) -> None:
+def _render_swaps(con, team: dict, nation: str, P: dict) -> None:
+    """Substitute one starter for an eligible alternative (item 9). Eligible =
+    can actually play that slot's position; ranked best-fit first."""
+    pcs = {s["slot_no"]: s["position_code"] for s in team["slots"]}
+    with st.expander("Substitutes / swap a player"):
+        slot_no = st.selectbox(
+            "Position", sorted(team["names"]), key=f"swslot_{nation}",
+            format_func=lambda sn: f"{pcs.get(sn, '?')} · {team['names'][sn]}")
+        alts = api.alternatives(con, nation, team["formation"], slot_no, P,
+                                tuple(team["xi_ea"].values()))
+        if not alts:
+            st.caption("No eligible alternatives for this position.")
+        else:
+            pick = st.selectbox(
+                "Replace with", alts, key=f"swpick_{nation}",
+                format_func=lambda a: f"{a[2]} — fit {a[4]:.2f}")
+            c1, c2 = st.columns(2)
+            if c1.button("Swap in", key=f"swdo_{nation}", use_container_width=True):
+                st.session_state.setdefault("ov", {}).setdefault(
+                    nation, {})[slot_no] = pick[0]
+                st.rerun()
+            if c2.button("Reset XI", key=f"swrst_{nation}", use_container_width=True):
+                st.session_state.get("ov", {}).pop(nation, None)
+                st.rerun()
+
+
+def render_panel(con, team: dict, view: str, name: str, nation: str,
+                 fmts: list[str], auto_fmt: str, P: dict) -> None:
     st.subheader(name)
+    # knob 1 — formation: current shape shown, dropdown to change; the 5 axes and
+    # the pitch below reassemble for the chosen shape.
+    st.selectbox("Formation", fmts, key=f"fmt_{nation}",
+                 help="Defaults to the auto-picked best-fit shape; change it to "
+                      "re-pick this squad's XI for a different formation.")
     gk = (f"{team['gk_name']} ({team['gk_ovr']})" if team.get("gk_ovr")
           else team.get("gk_name") or "—")
-    st.markdown(f"Formation **{team['formation']}** · {VIEW_LABELS[view]} · **GK** {gk}")
+    auto = " · auto best-fit" if team["formation"] == auto_fmt else ""
+    st.caption(f"{VIEW_LABELS[view]} · GK {gk}{auto}")
     st.caption("Team playstyle (0–1 percentile vs the field)")
     ax = team["axes"]
     for key, label in AXIS_LABELS:
         v = min(max(float(ax.get(key, 0.0)), 0.0), 1.0)
         st.progress(v, text=f"{label} — {v:.2f}")
+    _render_swaps(con, team, nation, P)
 
 
 def render_strategy(team: dict, name: str) -> None:
@@ -190,9 +222,10 @@ def render_strategy(team: dict, name: str) -> None:
 def main():
     st.set_page_config(page_title="WC2026 Match Simulator", layout="wide")
 
-    con, P = get_setup(FORMATION)
-    nations = get_nations(FORMATION)
+    con, P = get_setup(DEFAULT_FORMATION)
+    nations = get_nations(DEFAULT_FORMATION)
     labels = get_labels()
+    fmts = api.formations(con)
 
     def lbl(code: str) -> str:
         name = labels.get(code)
@@ -215,8 +248,16 @@ def main():
         st.warning("Pick two different nations in the sidebar.")
         return
 
+    # per-team formation: default to the auto best-fit, overridable via the panel
+    # knob (st.session_state key fmt_<nation>); XI swaps live in ov[<nation>].
+    auto_a, auto_b = api.auto_formation(con, a, P), api.auto_formation(con, b, P)
+    fmt_a = st.session_state.setdefault(f"fmt_{a}", auto_a)
+    fmt_b = st.session_state.setdefault(f"fmt_{b}", auto_b)
+    ov = st.session_state.get("ov", {})
+
     try:
-        r = get_matchup(con, P, a, b, FORMATION)
+        r = api.matchup(con, a, b, P, fmt_a, fmt_b,
+                        xi_a=ov.get(a), xi_b=ov.get(b))
     except ValueError as e:
         st.error(str(e))
         return
@@ -233,17 +274,18 @@ def main():
 
     is_a = side == a
     team = r["team_a"] if is_a else r["team_b"]
+    auto_fmt = auto_a if is_a else auto_b
     pcol, icol = st.columns([0.46, 0.54])
     with pcol:
         st.plotly_chart(
             draw_pitch(team, view, up=is_a, title=f"{lbl(side)} — {team['formation']}"),
             use_container_width=True)
     with icol:
-        render_panel(team, view, lbl(side))
+        render_panel(con, team, view, lbl(side), side, fmts, auto_fmt, P)
 
     # full-width strategy strip — uses the whole screen, not a narrow column
     render_strategy(team, lbl(side))
-    st.caption("Player attributes · tunable knobs · substitutes — coming in V2.")
+    st.caption("Player attribute detail — coming next.")
 
     with st.expander("Scoreline probability matrix", expanded=True):
         st.caption(f"Rows = {lbl(a)} goals · columns = {lbl(b)} goals · "
