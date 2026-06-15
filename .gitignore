@@ -14,10 +14,15 @@ downloaded_files/
 
 # Data files — never commit raw data, it's regenerable
 data/raw/
-data/processed/
+data/processed/*
 data/interim/
 *.parquet
 *.duckdb
+
+# Exception: the trimmed ~17 MB runtime DB IS committed, so friends can run the
+# dashboard straight from a clone (rebuild it via src/tools/make_dashboard_db.py).
+# The full ~950 MB worldcup.duckdb stays ignored by the patterns above.
+!data/processed/worldcup_dashboard.duckdb
 
 # Review artifacts (regenerable via src/tools/build_zone_battle_xlsx.py)
 zone_battle_review.xlsx

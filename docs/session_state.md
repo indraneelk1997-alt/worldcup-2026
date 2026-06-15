@@ -3,8 +3,8 @@
 > **Fast-changing.** This is "where we are right now." Updated at the end
 > of each working session. For permanent facts/rules, see `Claude.md`.
 
-**Last updated:** end of S39 (2026-06-15)
-**Current version line:** **Chessboard model COMPLETE — items 1–8 all DONE & validated.**
+**Last updated:** end of S40 (2026-06-15)
+**Current version line:** **Dashboard build STARTED — V0 (Streamlit walking skeleton) BUILT & verified (S40).** Chessboard model COMPLETE — items 1–8 all DONE & validated.
 Item 8 step **E (bivariate Poisson → scoreline)** built + validated S38: a full
 team-vs-team matchup now runs end to end (adjusted attrs → occupancy boards → zone
 battles → aggregated index → VOLUME → bivariate-Poisson scoreline). Acceptance test
@@ -12,6 +12,118 @@ battles → aggregated index → VOLUME → bivariate-Poisson scoreline). Accept
 band). `λ₃=0` LOCKED; `VOLUME=199.4` promoted to `zone_battle.json`. DB unchanged at
 **41 tables** (read-only orchestration; no DDL). **Next agenda: dashboard visual design**
 (+ full-tournament sim). Design doc: `docs/item8_aggregation.md`.
+
+## S40 outcome — dashboard V0 (Streamlit walking skeleton) + tracker + trimmed DB
+
+First dashboard session. Design-before-code throughout; shell-relay (rule 12) — the
+assistant wrote files via file tools, Indraneel ran every command in WSL. **No model
+or DB-schema changes** (the model was already dashboard-ready). Design doc:
+**`docs/dashboard_design.md`** (new).
+
+### Decisions locked (S40)
+- **Stack: Streamlit first, web-app (FastAPI + JS) port later.** HTML artifact ruled
+  out — it can't run the Python model, and the dashboard needs live recompute
+  (swaps/knobs/sim). Streamlit imports the model directly + reads DuckDB. (Notion
+  "Build approach" row → Validated.)
+- **The model is already dashboard-ready** — `zone_aggregate.py` exposes importable
+  functions returning plain dicts/numpy (`_scoreline_setup`, `_assemble_team`,
+  `_lambda_pair`, `bivariate_poisson_matrix`, `_matrix_summary`). No model rewrite.
+- **Adapter pattern:** `dashboard/model_api.py` is the ONLY thing the view calls —
+  Streamlit-agnostic (no streamlit import → CLI-testable + reusable for the web-app
+  port). It closes two model gaps: surfaces player NAMES, and returns the
+  `{slot: ea_id}` XI dict for the V2 swap path. Caching decorators live in `app.py`.
+- **DB distribution: trimmed runtime DB by EXCLUSION, committed to the repo.** Full DB
+  is 950 MB, ~all of it 3 StatsBomb RAW tables (`statsbomb_frame` 5.8M rows,
+  `statsbomb_event` 686k, `statsbomb_frame_meta` 368k) — pure upstream derivation
+  inputs the dashboard never reads. Dropping just those → **17.3 MB** (38 tables),
+  small enough to commit. Covers V0→V3 read-set up front (no per-version re-trim);
+  event-level data is a deliberate future add. Built by `src/tools/make_dashboard_db.py`
+  (ATTACH read-only + CTAS, so no PK/FK copied → sidesteps every DuckDB FK gotcha).
+- **`WC2026_DB` env override** added to `zone_battle.py` `DB_PATH` (default unchanged).
+  `model_api` defaults the dashboard to the trimmed DB when present → **friend parity**
+  (Indraneel runs exactly what a clone-only friend runs; a missing-table breaks for
+  both, not silently only for friends).
+
+### S40 lesson banked (→ consider promoting to Claude.md)
+- **The model mixes import styles.** Most modules use package-absolute
+  `from src.load.v2_ingest...`, but some probes use a BARE sibling import (e.g.
+  `_probe_adjusted_ratings.py` → `import _ea_attribute_buckets`). A bare import only
+  resolves if `src/load/v2_ingest/` is on `sys.path` — true when you run a model script
+  *inside* that dir (Python auto-adds the script's dir), false from `dashboard/`. Fix:
+  `model_api.py` puts BOTH the repo root and the `v2_ingest` dir on `sys.path`. This was
+  the S40 "mirror the real execution context" catch — the model probe ran fine standalone
+  but crashed when imported from the dashboard entry point.
+
+### Notion — "Dashboard Tracker" (renamed from "Interactive Dashboard — Spec & Build Plan")
+Now the detailed living tracker (the repo session log stays the all-activity record).
+Renamed (dropped the em-dash that hid it in search); under the main project page.
+Enriched schema: added **Type** (Main element/Sub-element/Interactivity/Info/Aesthetic),
+**Version** (V0–V3/Later), **Status** (Planned/In progress/Built/Validated/Deferred),
+and a **Parent element ⇄ Sub-elements** self-relation for hierarchy. The 9 spec rows
+tagged as Main elements + mapped to the version ladder. Match-sim row → **Built** with
+a V0 as-built note. As we build each version, sub-element/interactivity/info/aesthetic
+rows hang off the 9 via the relation. **Keep this updated every session.**
+
+### Version ladder (Notion Version mirrors this)
+- **V0 (DONE)** — pick A vs B (dropdowns, full-name "Spain (ESP)" labels) → both auto-XIs
+  + scoreline matrix + W/D/L/E[goals]. Formation fixed 4-3-3. Verified vs
+  `zone_aggregate.py --scoreline` (ESP–ENG 43.0/18.2/38.9, most-likely 2–2).
+- **V1** — formation pitch + player tokens (from occupancy boards) + click→info panel.
+- **V2** — player profile (EA + empirical toggle) + swap→recompute; knobs (formation, λ₃).
+- **V3** — stats view (occupancy heatmaps, zone-threat surface, scoreline viz) + fuller sim.
+- Then: finalize README; begin the web-app port.
+
+### Files (S40, uncommitted until the commit below)
+- New: `dashboard/app.py`, `dashboard/model_api.py`, `dashboard/README.md`,
+  `src/tools/make_dashboard_db.py`, `docs/dashboard_design.md`,
+  `data/processed/worldcup_dashboard.duckdb` (**committed**, 17.3 MB).
+- Modified: `src/load/v2_ingest/zone_battle.py` (`WC2026_DB` env-overridable `DB_PATH`),
+  `.gitignore` (un-ignore the trimmed DB only), `docs/session_state.md`.
+- Dep: `uv add streamlit` (streamlit 1.58.0 + deps in `pyproject`/`uv.lock`).
+- **No DDL** — `db_schema.md` unchanged at 41 tables.
+
+### S41 openers
+1. **V1 — the pitch.** Render the formation pitch + player tokens from the item-6
+   occupancy boards (`team_boards()` → attack/defence per-zone grids); click a token →
+   right-side info panel. **Decide the render lib** (Plotly for hover/click vs matplotlib
+   static) once we look at the board data shape. GK token placed separately
+   (`load_gk_score`; GK has no outfield board).
+2. Keep the Notion Dashboard Tracker updated — add V1 sub-element/interactivity/info/
+   aesthetic rows under "Formation pitch" / "Player tokens" / "Right-side info panel".
+3. Carried model refinements (unchanged): Vinícius linkage check; formation-per-team;
+   defence-suppression term; full-tournament sim.
+
+### S40 commit
+```
+S40: dashboard V0 — Streamlit walking skeleton + trimmed runtime DB
+
+First dashboard session. No model/DB-schema changes (the model was already
+import-ready). Stack: Streamlit first (imports the model, live recompute),
+web-app port later; HTML artifact ruled out.
+
+dashboard/model_api.py: Streamlit-agnostic adapter over zone_aggregate seams
+(setup/list_nations/nation_names/assemble_team/matchup); surfaces player names +
+the {slot:ea_id} XI dict the model's helpers drop. Adds repo root AND the
+v2_ingest dir to sys.path (some model probes use bare sibling imports).
+dashboard/app.py: view only -- nation pickers (full-name "Spain (ESP)" labels),
+W/D/L metrics, both XIs, scoreline matrix; st.cache_resource/st.cache_data.
+
+DB distribution: trim by EXCLUSION. src/tools/make_dashboard_db.py copies every
+table except the 3 StatsBomb raw giants (frame/event/frame_meta) via ATTACH+CTAS
+-> data/processed/worldcup_dashboard.duckdb (17.3 MB from 950 MB), committed so
+friends run from a plain clone. zone_battle.py DB_PATH now WC2026_DB-overridable;
+model_api defaults the dashboard to the trimmed DB (friend parity). .gitignore
+un-ignores just that file.
+
+Verified vs zone_aggregate.py --scoreline (ESP-ENG 43.0/18.2/38.9, 2-2).
+
+New: dashboard/{app,model_api}.py, dashboard/README.md, src/tools/make_dashboard_db.py,
+     docs/dashboard_design.md, data/processed/worldcup_dashboard.duckdb
+Modified: src/load/v2_ingest/zone_battle.py, .gitignore, docs/session_state.md, pyproject.toml, uv.lock
+(No DDL -- db_schema.md unchanged at 41 tables.)
+
+Refs: docs/dashboard_design.md, docs/session_state.md
+```
 
 ## S39 outcome — Notion explainer, diagram set, data-layer docs, two backlog DBs
 

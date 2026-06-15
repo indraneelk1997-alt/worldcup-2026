@@ -19,12 +19,17 @@ _side_score exactly (regression-safe). Board sweep over a real zone is the next 
 from __future__ import annotations
 import argparse
 import json
+import os
 from pathlib import Path
 
 import duckdb
 
 REPO = Path(__file__).resolve().parents[3]
-DB_PATH = REPO / "data" / "processed" / "worldcup.duckdb"
+# DB path is env-overridable via WC2026_DB so the dashboard (or a friend running
+# a trimmed runtime DB) can point elsewhere without editing code. Default = the
+# full local DB, so all existing scripts/behaviour are unchanged.
+DB_PATH = Path(os.environ.get("WC2026_DB",
+                              REPO / "data" / "processed" / "worldcup.duckdb"))
 BATTLE_CFG = REPO / "data" / "config" / "zone_battle.json"
 FAMILIES_CFG = REPO / "data" / "config" / "playstyle_families.json"
 
