@@ -324,6 +324,75 @@ def strategy_notes(team: dict) -> dict:
 
 
 # --------------------------------------------------------------------------- #
+# Squad coverage (reads player_coverage_index; docs/player_coverage_index.md).
+# Read-only display data for the "Squad coverage" page + future profile visuals.
+# --------------------------------------------------------------------------- #
+_GRP_ORDER = ("CASE primary_position_group WHEN 'GK' THEN 0 WHEN 'DEF' THEN 1 "
+              "WHEN 'MID' THEN 2 WHEN 'FWD' THEN 3 ELSE 4 END")
+
+# tier -> (label, hex) for badge rendering. Mirrors the design-doc ladder.
+COVERAGE_TIERS = {
+    "empirical+rated":   ("Empirical + rated", "#15803d"),
+    "rated":             ("Rated (EA-adjusted)", "#4ade80"),
+    "empirical_unrated": ("Empirical, unrated", "#f97316"),
+    "ea_only":           ("EA only", "#f59e0b"),
+    "group_only":        ("Group fallback", "#dc2626"),
+    "none":              ("No data", "#9ca3af"),
+    "gk":                ("Goalkeeper", "#64748b"),
+}
+
+
+def coverage_rows(con, nation: str) -> list[dict]:
+    """All squad players for a nation with their coverage signals, ordered
+    GK->DEF->MID->FWD then best-covered first. One dict per player."""
+    cur = con.execute(f"""
+        SELECT player_name, primary_position_group AS grp, caps, club,
+               coverage_tier, coverage_score, has_ea, has_adjusted, coverage_basis,
+               understat_minutes, understat_matches, fbref_minutes, fbref_matches,
+               statsbomb_minutes, statsbomb_matches,
+               empirical_minutes_total, n_empirical_sources
+        FROM player_coverage_index WHERE nation_code = ?
+        ORDER BY {_GRP_ORDER}, coverage_score DESC NULLS LAST, caps DESC NULLS LAST
+    """, [nation])
+    cols = [d[0] for d in cur.description]
+    return [dict(zip(cols, r)) for r in cur.fetchall()]
+
+
+def coverage_rating(con, nation: str) -> dict:
+    """Team coverage headline (outfield-only; GKs excluded from both numbers, as
+    they're rated separately and carry a NULL coverage_score).
+      -> {n_squad, n_outfield, pct_ready, weighted, tier_counts}"""
+    r = con.execute("""
+        SELECT COUNT(*),
+               COUNT(*) FILTER (WHERE primary_position_group <> 'GK'),
+               AVG(CASE WHEN primary_position_group <> 'GK'
+                        THEN CASE WHEN has_adjusted THEN 1.0 ELSE 0.0 END END),
+               AVG(coverage_score)
+        FROM player_coverage_index WHERE nation_code = ?
+    """, [nation]).fetchone()
+    tc = dict(con.execute("""
+        SELECT coverage_tier, COUNT(*) FROM player_coverage_index
+        WHERE nation_code = ? GROUP BY 1""", [nation]).fetchall())
+    return {"n_squad": r[0], "n_outfield": r[1],
+            "pct_ready": (r[2] or 0.0) * 100.0,
+            "weighted": (r[3] or 0.0) * 100.0, "tier_counts": tc}
+
+
+def coverage_nations(con) -> list[dict]:
+    """All nations ranked by outfield coverage -- for a league-table overview.
+      -> [{nation, pct_ready, weighted, n}] best-first."""
+    cur = con.execute(f"""
+        SELECT nation_code,
+               100.0*AVG(CASE WHEN primary_position_group <> 'GK'
+                              THEN CASE WHEN has_adjusted THEN 1.0 ELSE 0.0 END END) AS pct_ready,
+               100.0*AVG(coverage_score) AS weighted, COUNT(*) AS n
+        FROM player_coverage_index GROUP BY 1
+        ORDER BY pct_ready DESC, weighted DESC""")
+    return [{"nation": a, "pct_ready": b, "weighted": c, "n": d}
+            for a, b, c, d in cur.fetchall()]
+
+
+# --------------------------------------------------------------------------- #
 # CLI self-test (no Streamlit) -- mirrors zone_aggregate.py --scoreline output.
 # --------------------------------------------------------------------------- #
 def _gk_str(team: dict) -> str:
@@ -374,10 +443,31 @@ def _pitch_probe(nation: str = "ESP", view: str = "possession") -> None:
               f"{t['x']:>6.1f} {t['y']:>6.1f}  {t['name']}")
 
 
+def _coverage_probe(nation: str = "BRA") -> None:
+    con, _ = setup()
+    try:
+        rt = coverage_rating(con, nation)
+        rows = coverage_rows(con, nation)
+    finally:
+        con.close()
+    print(f"{nation}: {rt['n_outfield']} outfield (+GK) | model-ready "
+          f"{rt['pct_ready']:.1f}% | weighted {rt['weighted']:.1f} | "
+          f"tiers {rt['tier_counts']}\n")
+    print(f"  {'pos':>3} {'tier':>17} {'U_min':>6} {'F_min':>6} {'S_min':>6} "
+          f"{'EA':>2} {'adj':>3}  player")
+    for r in rows:
+        print(f"  {r['grp']:>3} {r['coverage_tier']:>17} "
+              f"{r['understat_minutes']:>6} {r['fbref_minutes']:>6} "
+              f"{r['statsbomb_minutes']:>6} {('Y' if r['has_ea'] else '-'):>2} "
+              f"{('Y' if r['has_adjusted'] else '-'):>3}  {r['player_name']}")
+
+
 if __name__ == "__main__":
     a = sys.argv[1:]
     if a and a[0] == "--pitch":
         _pitch_probe(a[1] if len(a) > 1 else "ESP",
                      a[2] if len(a) > 2 else "possession")
+    elif a and a[0] == "--coverage":
+        _coverage_probe(a[1] if len(a) > 1 else "BRA")
     else:
         _selftest(*(a[:2] if len(a) >= 2 else ()))

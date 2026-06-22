@@ -279,14 +279,27 @@ def _position_fit(pc: str, elig: dict, cb_lean: str | None,
 
 def _load_nation_players(con, nation: str) -> list:
     """[(sid, pdata)] for a nation's outfielders: ea_id, name, foot, eligibility
-    dict {role:(eligible,is_modal)} and StatsBomb cb_lean. Cacheable by caller."""
+    dict {role:(eligible,is_modal)} and StatsBomb cb_lean. Cacheable by caller.
+
+    Pool is restricted to players that HAVE an adjusted-attrs row (the
+    `IN (SELECT ... player_adjusted_attributes_wide)` filter). The downstream
+    `load_player` (zone_battle.py) can only rate a player who has that row; an
+    eligible-but-unrated player (e.g. `ea_id IS NULL`, never matched to EA FC26)
+    would otherwise be selectable here, then blow up `load_player` and blank the
+    dashboard (S43: Danilo Luiz/BRA, Ken Sema/SWE). Filtering at the source means
+    both the auto-XI (`autopick_xi`/`best_formation`) and the swap list
+    (`slot_alternatives`) only ever offer ratable players. Squads with too few
+    covered outfielders simply assemble fewer/no slots -> a clean 'could not
+    assemble' upstream, never a crash."""
     rows = con.execute(
         "SELECT s.squad_row_id, s.ea_id, s.player_name, ea.preferred_foot, "
         "       e.role, e.eligible, e.is_modal, e.cb_lean "
         "FROM wc2026_squad s "
         "JOIN squad_position_eligibility e ON e.squad_row_id = s.squad_row_id "
         "LEFT JOIN ea_fc26_player ea ON ea.ea_id = s.ea_id "
-        "WHERE s.nation_code=? AND s.primary_position_group IN ('DEF','MID','FWD')",
+        "WHERE s.nation_code=? AND s.primary_position_group IN ('DEF','MID','FWD') "
+        "  AND s.squad_row_id IN "
+        "      (SELECT squad_row_id FROM player_adjusted_attributes_wide)",
         [nation]).fetchall()
     players: dict[int, dict] = {}
     for sid, ea, name, foot, role, eligible, modal, lean in rows:

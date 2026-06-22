@@ -3,7 +3,8 @@
 > **Fast-changing.** This is "where we are right now." Updated at the end
 > of each working session. For permanent facts/rules, see `Claude.md`.
 
-**Last updated:** end of S42 (2026-06-15)
+**Last updated:** end of S44 (2026-06-22) — dark-screen fix SHIPPED + squad
+coverage index + dashboard coverage page + EA relink (44 verified overrides).
 **Current version line:** **S42: position-aware XI selection + best-fit formation BUILT & verified.** Item 9 (`docs/item9_xi_selection.md`). Replaced group-only `autopick_xi` with empirical, side-aware slotting off a new `squad_position_eligibility` table (modal/>20%-minutes rule across Understat+FBref+StatsBomb, EA + coarse-group fallbacks) and Hungarian assignment. Headline bugs dead (Cucurella→LB not RCB, Kane→ST). `best_formation` auto-picks the max-fit shape per squad (FRA/ARG→3-5-2, ENG→4-1-4-1…). **DB now 42 tables** (added `squad_position_eligibility`; first DDL since S35 — a derived rollup, no FK; `db_schema.md` regenerated). **Dashboard V2** (same session): info-panel formation dropdown (default auto best-fit) + player swap, both live-recomputing. Player-stats panel is the only V2 piece left. Dashboard V1 (vertical formation pitch + strategy) BUILT & accepted (S41). Chessboard model COMPLETE — items 1–8 all DONE & validated.
 Item 8 step **E (bivariate Poisson → scoreline)** built + validated S38: a full
 team-vs-team matchup now runs end to end (adjusted attrs → occupancy boards → zone
@@ -12,6 +13,147 @@ battles → aggregated index → VOLUME → bivariate-Poisson scoreline). Accept
 band). `λ₃=0` LOCKED; `VOLUME=199.4` promoted to `zone_battle.json`. DB unchanged at
 **41 tables** (read-only orchestration; no DDL). **Next agenda: dashboard visual design**
 (+ full-tournament sim). Design doc: `docs/item8_aggregation.md`.
+
+## S44 — dark-screen fix shipped + player coverage index + EA relink
+
+Big session (Cowork, shell-relay throughout). Closed the S43 dark-screen bug, then
+built a reusable squad-coverage index + dashboard page, then used it to fix the
+EA-linkage gaps it surfaced. **DB now 43 tables** (+`player_coverage_index`).
+
+### 1. Dark-screen fix (S43 plan, done B then A)
+- **B (root fix):** `_load_nation_players` (`zone_aggregate.py`) now filters the XI
+  candidate pool to players with a `player_adjusted_attributes_wide` row
+  (`... AND s.squad_row_id IN (SELECT squad_row_id FROM player_adjusted_attributes_wide)`).
+  Unrateable players (e.g. `ea_id IS NULL`) can no longer be auto-selected, so
+  `load_player` never hits its missing-attrs path. Covers the swap list too
+  (`slot_alternatives` shares the loader). Verified: BRA/ARG/NED/SWE assemble;
+  ESP/ENG XIs unchanged.
+- **A (guardrail):** `zone_battle.py:62` `raise SystemExit` → `raise ValueError`
+  (a `SystemExit`/BaseException sailed past `except ValueError` and blanked the
+  Streamlit panel). Verified: `load_player` on a no-attrs sid now raises a
+  catchable `ValueError`.
+
+### 2. player_coverage_index (new derived table) + dashboard "Squad coverage" page
+- **`src/load/v2_ingest/build_player_coverage_index.py`** → `player_coverage_index`
+  (1247 rows, CREATE OR REPLACE, no FK; design in `docs/player_coverage_index.md`).
+  Per squad player: identity + per-source minutes & matches (Understat/FBref/
+  StatsBomb) + `has_ea` + `has_adjusted` (model-ready) + a single `coverage_tier`
+  + `coverage_score`. Built read-only against the FULL DB (so StatsBomb minutes,
+  whose event table is trimmed out, are frozen in) → rides into the dashboard DB
+  via `make_dashboard_db.py`'s exclusion copy (auto-included).
+- **Tiers:** `empirical+rated` / `rated` / `empirical_unrated` (real minutes but
+  EA-unmatched — the fixable bucket, added during build vs the agreed 5) /
+  `ea_only` / `group_only` / `none` / `gk` (neutral, excluded from team score).
+- **Dashboard:** sidebar **Section** radio (Match simulator / Squad coverage); the
+  coverage page = nation picker + header (model-ready % outfield-only + weighted
+  /100) + per-player coloured tier badges with source minutes. `model_api` adds
+  `coverage_rows` / `coverage_rating` / `coverage_nations` + `--coverage` probe.
+
+### 3. EA relink — 44 verified ea_id overrides
+- The index surfaced ~370 `ea_id`-NULL outfielders (incl. marquee names dark from
+  nickname mismatches: Vini Jr, Son, Gabriel, Vitinha…). Built
+  **`src/load/v2_ingest/_probe_ea_relink_candidates.py`** — candidates blocked by
+  nation + birth-year + **club** (the resolver's deferred D5 signal) with
+  token-aware name scoring; writes `ea_relink_review.csv` +
+  `ea_id_overrides.proposed.json`.
+- Curated to **`data/config/ea_id_overrides.json`** (39 auto + 5 manual = 44;
+  dropped 2 club/age false positives: 542 Tomiyasu→Itakura, 104 Lee→Lee).
+  **`resolve_squad_links.py`** now applies overrides (method `override`, conf 1.0,
+  win over the name ladder).
+- Chain: resolver `--apply` (ea_id 815→859) → `derive_adjusted_attributes.py
+  --apply` (wide **732→776**, all 44 converted) → rebuilt eligibility + coverage
+  index + dashboard DB. **Result: BRA 52.2→65.2% model-ready; Vinícius/Gabriel/
+  Son/Vitinha now `empirical+rated` & selectable.** Controls held (Danilo Luiz,
+  Ken Sema, Neymar correctly stay dark — genuinely not in EA).
+
+### Files (S44, uncommitted)
+- New: `src/load/v2_ingest/build_player_coverage_index.py`,
+  `src/load/v2_ingest/_probe_ea_relink_candidates.py`,
+  `data/config/ea_id_overrides.json`, `docs/player_coverage_index.md`,
+  `dashboard/` coverage page (in `app.py`/`model_api.py`).
+- Modified: `src/load/v2_ingest/zone_aggregate.py` (pool filter),
+  `src/load/v2_ingest/zone_battle.py` (ValueError), `resolve_squad_links.py`
+  (overrides), `dashboard/app.py`, `dashboard/model_api.py`,
+  `data/processed/worldcup.duckdb` (+coverage index, +44 ea_id, rebuilt adj attrs),
+  `data/processed/worldcup_dashboard.duckdb` (rebuilt), `docs/session_state.md`.
+- **DDL:** +1 table (43 total). `db_schema.md` regen owed (regenerating now).
+- Untracked regenerable artifacts: `ea_relink_review.csv`,
+  `data/config/ea_id_overrides.proposed.json`.
+
+### S45 openers
+1. Live-confirm the coverage page + that BRA's XI now starts Vinícius.
+2. Banked: remaining `empirical_unrated` (47) — second relink pass if wanted
+   (lower-confidence tail); `empirical_unrated` players still excluded from XI
+   until relinked (correct). Depay not in EA (no fix).
+3. Carried model refinements (defence-suppression term, formation model-index
+   objective, etc.).
+
+---
+
+## S43 (debug) — dashboard "goes dark" for some teams: ROOT CAUSE FOUND → FIXED in S44
+
+Cowork debug session, shell-relay throughout (bash can't mount the WSL repo; file
+tools work). **No code written this session** — diagnosis only. Indraneel will
+implement next session, order agreed **B then A** (below).
+
+### Symptom
+Dashboard panel goes blank ("dark") when certain teams are selected — reported
+NED vs SWE, then ARG/BRA/NED. ESP/ENG (defaults) render fine. Not a tidy error
+message — the main panel blanks.
+
+### Root cause (CONFIRMED, not inferred)
+`src/load/v2_ingest/zone_battle.py:62`, in `load_player`:
+```python
+if w is None:
+    raise SystemExit(f"no adjusted attrs for squad_row_id {sid}")
+```
+When a player in the selected XI has no row in `player_adjusted_attributes_wide`,
+the model raises **`SystemExit`**. `SystemExit` is a `BaseException`, so it bypasses
+`app.py`'s `except ValueError` (matchup guard, app.py:261) — it propagates into
+Streamlit, which aborts the script run and blanks the panel → "dark." In the CLI the
+same raise prints its message to stderr and exits with **no traceback** (that's the
+`no adjusted attrs for squad_row_id 221/585` line then silence we observed).
+
+### Why these teams (observed via `dashboard/model_api.py NED SWE` / `BRA ARG`)
+The XI candidate-pool builder `_load_nation_players` (zone_aggregate.py:280) joins
+`wc2026_squad ⨝ squad_position_eligibility` and **never requires an adjusted-attrs
+row**, so a player with `ea_id = NULL` is selectable. Two such players confirmed
+(identical in full + trimmed DB, both 732 adj rows — NOT a trim artefact):
+- **BRA** `squad_row_id 221` = **Danilo Luiz** (DEF, 70 caps, `ea_id=None`) — in BRA's own XI.
+- **SWE** `squad_row_id 585` = **Ken Sema** (MID, 33 caps, `ea_id=None`) — SWE's problem.
+
+Trigger = *either* selected side's XI contains an `ea_id=NULL` player. (NED's own XI
+is clean — "NED dark" was NED **vs SWE**, i.e. Ken Sema. BRA-anything darkens via Danilo.)
+ESP/ENG render because their XIs are fully covered. `ea_id=NULL` ⇒ never matched to
+EA FC26 ⇒ no base attrs ⇒ absent from `player_adjusted_attributes_wide`.
+
+### Agreed fix — two independent layers, do **B then A**
+**B (real fix — teams show their actual XI):** filter the candidate pool in
+`_load_nation_players` to players the model can rate — `INNER JOIN
+player_adjusted_attributes_wide` (or require `ea_id IS NOT NULL`). Danilo/Sema then
+never get selected; next-best *covered* player fills the slot. Blast radius tiny:
+ESP/ENG unaffected (already covered), big squads drop a fringe backup, genuinely thin
+squads degrade cleanly via A. `_load_nation_players` feeds both `autopick_xi` and
+`best_formation`, so auto-formation stays consistent.
+
+**A (guardrail — stops "dark" ever again):** `zone_battle.py:62`
+`raise SystemExit(...)` → `raise ValueError(...)` (or a dedicated `ModelDataError`).
+app.py's existing `except ValueError` around `matchup` then turns any residual gap
+into a tidy "could not assemble X" message instead of a blank panel.
+
+**Banked (do NOT bundle):** B does not *recover* Danilo/Sema — they have `ea_id=NULL`
+(no EA match at all). Recovering them = fix the **EA crosswalk**, a separate/bigger
+task, distinct from the S42 `our_player_id`↔Understat linkage note.
+
+### Verification when implemented (mirror real context, rule 4)
+Re-run `uv run python dashboard/model_api.py BRA ARG` and `NED SWE` → expect full XIs
++ λ-means, no `SystemExit`. Then confirm live in `uv run streamlit run dashboard/app.py`
+(pick BRA, ARG, NED vs SWE — panel renders, no dark).
+
+### Files touched this session
+- `docs/session_state.md` (this entry). **No code changes**, no DB/DDL change.
+
+---
 
 ## S42 outcome — position-aware XI selection (item 9) + best-fit formation
 

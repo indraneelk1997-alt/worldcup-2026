@@ -59,7 +59,14 @@ def load_player(con, sid: int, p2f: dict) -> dict:
     w = con.execute("SELECT * FROM player_adjusted_attributes_wide WHERE squad_row_id=?",
                     [sid]).fetchone()
     if w is None:
-        raise SystemExit(f"no adjusted attrs for squad_row_id {sid}")
+        # Catchable, NOT SystemExit. A SystemExit (BaseException) sails past every
+        # `except Exception`/`except ValueError` and, in the Streamlit dashboard,
+        # blanks the panel ("goes dark", S43). ValueError matches the assembly-
+        # failure contract the callers already expect (model_api.matchup raises
+        # ValueError; app.py catches it -> tidy message). Since S43 fix B filters
+        # the selection pool to ratable players, this is now a guardrail for any
+        # residual gap rather than the normal path.
+        raise ValueError(f"no adjusted attrs for squad_row_id {sid}")
     attrs = dict(zip([d[0] for d in con.description], w))
     name, nation, pos, ea_id = con.execute(
         "SELECT player_name, nation_code, position_class, ea_id FROM wc2026_squad "

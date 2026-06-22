@@ -1,8 +1,8 @@
 # DuckDB schema reference
 
-_Generated: 2026-06-15T20:11:03_  
+_Generated: 2026-06-22T18:07:07_  
 _DB: `data/processed/worldcup.duckdb`_  
-_Tables: 42_  
+_Tables: 43_  
 
 
 This file is auto-generated. Do not edit by hand. Regenerate with:
@@ -607,7 +607,7 @@ uv run python src/tools/dump_db_schema.py
 
 ### `player_adjusted_attributes`
 
-**Rows**: 21,228
+**Rows**: 22,504
 
 | Column | Type | Nullable | PK |
 |---|---|---|---|
@@ -642,12 +642,12 @@ uv run python src/tools/dump_db_schema.py
   adj_pct = None
   lambda_dim = 0.0
   model_version = 'adj_attr_v1'
-  created_at = datetime.datetime(2026, 6, 12, 18, 8, 47, 922723)
+  created_at = datetime.datetime(2026, 6, 22, 18, 4, 14, 80587)
 ```
 
 ### `player_adjusted_attributes_wide`
 
-**Rows**: 732
+**Rows**: 776
 
 | Column | Type | Nullable | PK |
 |---|---|---|---|
@@ -696,12 +696,12 @@ uv run python src/tools/dump_db_schema.py
   composure = 73.0
   crossing = 55.0
   curve = 51.0
-  def_awareness = 77.0488992083687
+  def_awareness = 77.03412576824303
   dribbling = 60.0
   finishing = 30.0
   free_kick_accuracy = 32.0
   heading_accuracy = 67.0
-  interceptions = 75.0488992083687
+  interceptions = 75.03412576824303
   jumping = 80.0
   long_passing = 61.0
   long_shots = 35.0
@@ -710,13 +710,79 @@ uv run python src/tools/dump_db_schema.py
   reactions = 73.0
   short_passing = 64.0
   shot_power = 61.0
-  sliding_tackle = 73.0488992083687
+  sliding_tackle = 73.03412576824303
   sprint_speed = 80.0
   stamina = 71.0
-  standing_tackle = 73.0488992083687
+  standing_tackle = 73.03412576824303
   strength = 78.0
   vision = 36.0
   volleys = 33.0
+```
+
+### `player_coverage_index`
+
+**Rows**: 1,247
+
+| Column | Type | Nullable | PK |
+|---|---|---|---|
+| `squad_row_id` | `INTEGER` | YES |  |
+| `nation_code` | `VARCHAR` | YES |  |
+| `nation_name` | `VARCHAR` | YES |  |
+| `player_name` | `VARCHAR` | YES |  |
+| `name_norm` | `VARCHAR` | YES |  |
+| `primary_position_group` | `VARCHAR` | YES |  |
+| `position_class` | `VARCHAR` | YES |  |
+| `ea_id` | `INTEGER` | YES |  |
+| `our_player_id` | `INTEGER` | YES |  |
+| `caps` | `INTEGER` | YES |  |
+| `shirt_no` | `INTEGER` | YES |  |
+| `club` | `VARCHAR` | YES |  |
+| `dob` | `TIMESTAMP` | YES |  |
+| `has_ea` | `BOOLEAN` | YES |  |
+| `has_adjusted` | `BOOLEAN` | YES |  |
+| `coverage_basis` | `VARCHAR` | YES |  |
+| `understat_minutes` | `BIGINT` | YES |  |
+| `fbref_minutes` | `BIGINT` | YES |  |
+| `statsbomb_minutes` | `BIGINT` | YES |  |
+| `understat_matches` | `BIGINT` | YES |  |
+| `fbref_matches` | `BIGINT` | YES |  |
+| `statsbomb_matches` | `BIGINT` | YES |  |
+| `empirical_minutes_total` | `BIGINT` | YES |  |
+| `n_empirical_sources` | `BIGINT` | YES |  |
+| `coverage_tier` | `VARCHAR` | YES |  |
+| `coverage_score` | `DOUBLE` | YES |  |
+
+**Declared foreign keys**: none
+
+**Sample row**:
+
+```
+  squad_row_id = 550
+  nation_code = 'NED'
+  nation_name = 'Netherlands'
+  player_name = 'Virgil van Dijk'
+  name_norm = 'virgil van dijk'
+  primary_position_group = 'DEF'
+  position_class = 'DEF'
+  ea_id = 203376
+  our_player_id = 50000844
+  caps = 92
+  shirt_no = 4
+  club = 'Liverpool'
+  dob = datetime.datetime(1991, 7, 8, 0, 0)
+  has_ea = True
+  has_adjusted = True
+  coverage_basis = 'empirical'
+  understat_minutes = 6750
+  fbref_minutes = 1920
+  statsbomb_minutes = 1081
+  understat_matches = 75
+  fbref_matches = 21
+  statsbomb_matches = 11
+  empirical_minutes_total = 9751
+  n_empirical_sources = 3
+  coverage_tier = 'empirical+rated'
+  coverage_score = 1.0
 ```
 
 ### `player_match_fbref`
@@ -1091,7 +1157,7 @@ uv run python src/tools/dump_db_schema.py
 
 ### `squad_position_eligibility`
 
-**Rows**: 3,177
+**Rows**: 3,163
 
 | Column | Type | Nullable | PK |
 |---|---|---|---|
@@ -1830,6 +1896,17 @@ uv run python src/tools/dump_db_schema.py
 - `team_season_strength_v103`
 - `zone_xt`
 
+### `position_class` (8 tables)
+
+- `best_xi`
+- `ea_fc26_player`
+- `player_coverage_index`
+- `player_positions` *(PK)*
+- `player_positions_v103`
+- `player_season_stats`
+- `positions`
+- `wc2026_squad`
+
 ### `minutes` (7 tables)
 
 - `best_xi`
@@ -1840,16 +1917,6 @@ uv run python src/tools/dump_db_schema.py
 - `squad_position_profile`
 - `statsbomb_player_match`
 
-### `position_class` (7 tables)
-
-- `best_xi`
-- `ea_fc26_player`
-- `player_positions` *(PK)*
-- `player_positions_v103`
-- `player_season_stats`
-- `positions`
-- `wc2026_squad`
-
 ### `game_id` (6 tables)
 
 - `games` *(PK)*
@@ -1858,6 +1925,23 @@ uv run python src/tools/dump_db_schema.py
 - `team_match_fbref` *(PK)*
 - `team_match_predictions_b12` *(PK)*
 - `team_match_stats` *(PK)*
+
+### `squad_row_id` (6 tables)
+
+- `player_adjusted_attributes` *(PK)*
+- `player_adjusted_attributes_wide`
+- `player_coverage_index`
+- `squad_position_eligibility`
+- `squad_position_profile`
+- `wc2026_squad` *(PK)*
+
+### `ea_id` (5 tables)
+
+- `ea_fc26_player` *(PK)*
+- `ea_fc26_playstyle` *(PK)*
+- `player_adjusted_attributes`
+- `player_coverage_index`
+- `wc2026_squad`
 
 ### `fixture_id` (5 tables)
 
@@ -1915,14 +1999,6 @@ uv run python src/tools/dump_db_schema.py
 - `statsbomb_match`
 - `wc2026_squad`
 
-### `squad_row_id` (5 tables)
-
-- `player_adjusted_attributes` *(PK)*
-- `player_adjusted_attributes_wide`
-- `squad_position_eligibility`
-- `squad_position_profile`
-- `wc2026_squad` *(PK)*
-
 ### `away_team` (4 tables)
 
 - `fixtures`
@@ -1930,19 +2006,19 @@ uv run python src/tools/dump_db_schema.py
 - `md38_predictions_b12`
 - `statsbomb_match`
 
+### `club` (4 tables)
+
+- `club_elo` *(PK)*
+- `ea_fc26_player`
+- `player_coverage_index`
+- `wc2026_squad`
+
 ### `competition_id` (4 tables)
 
 - `statsbomb_event`
 - `statsbomb_match`
 - `statsbomb_player_match`
 - `team_playstyle_empirical`
-
-### `ea_id` (4 tables)
-
-- `ea_fc26_player` *(PK)*
-- `ea_fc26_playstyle` *(PK)*
-- `player_adjusted_attributes`
-- `wc2026_squad`
 
 ### `home_team` (4 tables)
 
@@ -1985,12 +2061,6 @@ uv run python src/tools/dump_db_schema.py
 - `player_match_stats`
 - `player_season_stats`
 
-### `club` (3 tables)
-
-- `club_elo` *(PK)*
-- `ea_fc26_player`
-- `wc2026_squad`
-
 ### `ingested_at` (3 tables)
 
 - `ea_fc26_player`
@@ -2015,6 +2085,24 @@ uv run python src/tools/dump_db_schema.py
 - `team_playstyle_empirical`
 - `team_season_strength_v103`
 
+### `name_norm` (3 tables)
+
+- `ea_fc26_player`
+- `player_coverage_index`
+- `wc2026_squad`
+
+### `nation_code` (3 tables)
+
+- `ea_fc26_player`
+- `player_coverage_index`
+- `wc2026_squad`
+
+### `nation_name` (3 tables)
+
+- `ea_fc26_player`
+- `player_coverage_index`
+- `wc2026_squad`
+
 ### `opponent` (3 tables)
 
 - `team_match_fbref`
@@ -2038,6 +2126,12 @@ uv run python src/tools/dump_db_schema.py
 - `md38_evaluation_b12_b2`
 - `md38_predictions_b12`
 - `predictions`
+
+### `player_name` (3 tables)
+
+- `player_coverage_index`
+- `players`
+- `wc2026_squad`
 
 ### `possession` (3 tables)
 
@@ -2086,6 +2180,11 @@ uv run python src/tools/dump_db_schema.py
 - `occupancy_base`
 - `zone_xt`
 
+### `caps` (2 tables)
+
+- `player_coverage_index`
+- `wc2026_squad`
+
 ### `composure` (2 tables)
 
 - `ea_fc26_player`
@@ -2105,6 +2204,11 @@ uv run python src/tools/dump_db_schema.py
 
 - `ea_fc26_player`
 - `player_adjusted_attributes_wide`
+
+### `dob` (2 tables)
+
+- `player_coverage_index`
+- `wc2026_squad`
 
 ### `dribbling` (2 tables)
 
@@ -2166,25 +2270,10 @@ uv run python src/tools/dump_db_schema.py
 - `player_season_stats`
 - `squad_position_profile`
 
-### `name_norm` (2 tables)
-
-- `ea_fc26_player`
-- `wc2026_squad`
-
 ### `nation` (2 tables)
 
 - `player_match_fbref`
 - `team_playstyle_blended`
-
-### `nation_code` (2 tables)
-
-- `ea_fc26_player`
-- `wc2026_squad`
-
-### `nation_name` (2 tables)
-
-- `ea_fc26_player`
-- `wc2026_squad`
 
 ### `np_xg` (2 tables)
 
@@ -2195,6 +2284,11 @@ uv run python src/tools/dump_db_schema.py
 
 - `team_match_fbref`
 - `team_match_stats`
+
+### `our_player_id` (2 tables)
+
+- `player_coverage_index`
+- `wc2026_squad`
 
 ### `own_goals` (2 tables)
 
@@ -2210,11 +2304,6 @@ uv run python src/tools/dump_db_schema.py
 
 - `statsbomb_event`
 - `statsbomb_player_match`
-
-### `player_name` (2 tables)
-
-- `players`
-- `wc2026_squad`
 
 ### `position_group` (2 tables)
 
@@ -2236,6 +2325,11 @@ uv run python src/tools/dump_db_schema.py
 - `team_match_stats`
 - `team_playstyle_blended`
 
+### `primary_position_group` (2 tables)
+
+- `player_coverage_index`
+- `wc2026_squad`
+
 ### `priority` (2 tables)
 
 - `player_positions`
@@ -2255,6 +2349,11 @@ uv run python src/tools/dump_db_schema.py
 
 - `statsbomb_match`
 - `team_match_fbref`
+
+### `shirt_no` (2 tables)
+
+- `player_coverage_index`
+- `wc2026_squad`
 
 ### `short_passing` (2 tables)
 

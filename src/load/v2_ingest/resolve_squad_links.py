@@ -48,6 +48,7 @@ EA_ALIASES = {
 }
 
 CONF = {
+    "override": 1.0,                          # verified manual relink (S44) — wins
     "exact+nation+year": 0.95,
     "exact+year": 0.90,
     "exact+nation": 0.85,
@@ -212,6 +213,21 @@ def main(apply: bool, fuzzy: bool) -> int:
             "pl_match": pl_match,
         })
     res = pd.DataFrame(rows)
+
+    # --- verified manual overrides (S44): win over the name ladder. These are
+    # human-verified ea_id relinks (data/config/ea_id_overrides.json) for players
+    # the exact-name ladder missed (nicknames/short names: Vini Jr, Son, etc.).
+    ov_path = Path("data/config/ea_id_overrides.json")
+    n_ov = 0
+    if ov_path.exists():
+        ov = json.loads(ov_path.read_text(encoding="utf-8"))
+        ovmap = {int(k): v["ea_id"] for k, v in ov.items() if not k.startswith("_")}
+        m = res["squad_row_id"].isin(ovmap)
+        res.loc[m, "ea_id"] = res.loc[m, "squad_row_id"].map(ovmap).astype("Int64")
+        res.loc[m, "ea_link_method"] = "override"
+        res.loc[m, "ea_link_confidence"] = CONF["override"]
+        n_ov = int(m.sum())
+    print(f"\noverrides applied: {n_ov} (data/config/ea_id_overrides.json)")
 
     # --- report ---
     n = len(res)

@@ -34,3 +34,5 @@ data/config/zone_battle.parsed.json
 # OS
 .DS_Store
 Thumbs.db
+ea_relink_review.csv
+data/config/ea_id_overrides.proposed.json

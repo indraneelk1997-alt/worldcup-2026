@@ -218,6 +218,51 @@ def render_strategy(team: dict, name: str) -> None:
     st.markdown("⚠️ **Watch-outs:**  " + "  ·  ".join(notes["weaknesses"]))
 
 
+# --- squad coverage page ---------------------------------------------------- #
+TIER_LABEL_HEX = {lab: hx for lab, hx in api.COVERAGE_TIERS.values()}
+
+
+def _mm(mins: int, mats: int) -> str:
+    """minutes (matches), or an em-dash when there's nothing."""
+    return f"{mins:,} ({mats})" if mins else "—"
+
+
+def style_coverage(df: pd.DataFrame):
+    """Tint the Tier cell by its tier colour (matplotlib-free Styler, same
+    pattern as style_scoreline)."""
+    def tint(lab):
+        return f"background-color: {TIER_LABEL_HEX.get(lab, '#9ca3af')}; color: white"
+    return df.style.map(tint, subset=["Tier"])
+
+
+def render_coverage_page(con, nations, lbl) -> None:
+    st.title("📊 Squad data coverage")
+    nation = st.selectbox("Nation", nations, format_func=lbl,
+                          index=nations.index("BRA") if "BRA" in nations else 0)
+    rt = api.coverage_rating(con, nation)
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Model-ready (outfield)", f"{rt['pct_ready']:.0f}%")
+    c2.metric("Weighted coverage", f"{rt['weighted']:.0f}/100")
+    c3.metric("Squad", f"{rt['n_squad']} ({rt['n_outfield']} outfield)")
+    st.caption("Tier = the best data we hold per player. Green = model-ready "
+               "(rateable); orange = real match data but EA-unmatched (a fixable "
+               "linkage gap); red = coarse fallback; grey = goalkeeper (rated "
+               "separately). Source cells show minutes (matches).")
+    rows = api.coverage_rows(con, nation)
+    disp = pd.DataFrame([{
+        "Pos": r["grp"], "Player": r["player_name"],
+        "Tier": api.COVERAGE_TIERS.get(r["coverage_tier"], (r["coverage_tier"],))[0],
+        "Understat": _mm(r["understat_minutes"], r["understat_matches"]),
+        "FBref": _mm(r["fbref_minutes"], r["fbref_matches"]),
+        "StatsBomb": _mm(r["statsbomb_minutes"], r["statsbomb_matches"]),
+        "EA": "✓" if r["has_ea"] else "—",
+        "Adj": "✓" if r["has_adjusted"] else "—",
+        "Caps": r["caps"] or 0,
+    } for r in rows])
+    st.dataframe(style_coverage(disp), use_container_width=True,
+                 hide_index=True, height=560)
+
+
 # --- app -------------------------------------------------------------------- #
 def main():
     st.set_page_config(page_title="WC2026 Match Simulator", layout="wide")
@@ -230,6 +275,13 @@ def main():
     def lbl(code: str) -> str:
         name = labels.get(code)
         return f"{name} ({code})" if name else code
+
+    # Section switch: the match simulator (default) or the squad-coverage view.
+    section = st.sidebar.radio("Section", ["Match simulator", "Squad coverage"],
+                               key="section")
+    if section == "Squad coverage":
+        render_coverage_page(con, nations, lbl)
+        return
 
     with st.sidebar:
         st.header("Match")
