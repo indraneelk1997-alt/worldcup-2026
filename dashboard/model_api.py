@@ -57,6 +57,7 @@ from src.load.v2_ingest.zone_aggregate import (          # noqa: E402
 from src.load.v2_ingest.formation_assembly import assemble, team_boards  # noqa: E402
 from src.load.v2_ingest.kernel_transforms import (       # noqa: E402
     N_BANDS, N_LANES, _centroid_band, _centroid_lane)
+import _probe_adjusted_ratings as _blend_eng              # noqa: E402  canonical blend engine
 
 PITCH_LEN, PITCH_WID = 120.0, 80.0        # StatsBomb pitch; own goal x=0, attack x=120
 
@@ -277,6 +278,27 @@ def team_heatmap(team: dict, view: str = "possession"):
     return grid
 
 
+def player_kernel(team: dict, slot_no, view: str = "possession"):
+    """6x5 occupancy grid for ONE player's slot, per view (attack/defense/blended-
+    possession). Returns None for the GK or an unknown slot (no kernel) so the
+    caller can keep the team backdrop. Used when a selected player's kernel
+    replaces the team heatmap on the pitch (V3 step 4)."""
+    if slot_no is None:
+        return None
+    p = float(team["axes"]["possession"])
+    for s in team["slots"]:
+        if s["slot_no"] != slot_no:
+            continue
+        if s["attack_grid"] is None:                 # GK — no kernel
+            return None
+        if view == "attack":
+            return s["attack_grid"]
+        if view == "defense":
+            return s["defence_grid"]
+        return _blended_grid(s, p)                    # standard/possession
+    return None
+
+
 def strategy_notes(team: dict) -> dict:
     """Deterministic, explainable strengths/weaknesses from the 5 playstyle axes
     (all 0..1 percentiles) + a one-line style tag. No black box -- pure rules.
@@ -390,6 +412,118 @@ def coverage_nations(con) -> list[dict]:
         ORDER BY pct_ready DESC, weighted DESC""")
     return [{"nation": a, "pct_ready": b, "weighted": c, "n": d}
             for a, b, c, d in cur.fetchall()]
+
+
+# --------------------------------------------------------------------------- #
+# Player profile (the Player tab, V3 step 4). One call, several tables; any of
+# squad_row_id / ea_id may be None (GK or unrated) -> sections degrade cleanly.
+# --------------------------------------------------------------------------- #
+_FACE = [("PAC", "ea_pace"), ("SHO", "ea_shooting"), ("PAS", "ea_passing"),
+         ("DRI", "ea_dribbling"), ("DEF", "ea_defending"), ("PHY", "ea_physical")]
+
+
+def player_profile(con, squad_row_id, ea_id) -> dict:
+    """Everything the Player tab renders, in one read:
+      - EA identity: overall, primary/alt position, age, club, foot, 6 face stats
+      - playstyles (ea_fc26_playstyle: name + tier)
+      - empirical positions (squad_position_eligibility: role/share/modal/eligible)
+      - adjusted attributes (player_adjusted_attributes: ea_raw + adj + shift, adj-desc)
+      - coverage row (player_coverage_index: tier + per-source minutes)
+
+    Note: there is deliberately NO single 'adjusted overall' scalar. EA's own
+    `ovr` is already a position-weighted overall; a flat mean over attributes
+    flattens specialists (S45: Yamal 64.7 < Henderson 71.6), so the per-phase
+    shift (uniform within a bucket) is the honest summary instead.
+    """
+    prof = {"overall": None, "ea_position": None, "alt_positions": None,
+            "age": None, "club": None, "foot": None, "face": [],
+            "playstyles": [], "positions": [], "attrs": [], "coverage": None}
+
+    if ea_id:
+        cols = "ovr, position, alt_positions, age, club, preferred_foot, " \
+               + ", ".join(c for _, c in _FACE)
+        ea = con.execute(f"SELECT {cols} FROM ea_fc26_player WHERE ea_id=?",
+                         [ea_id]).fetchone()
+        if ea:
+            prof.update(overall=ea[0], ea_position=ea[1], alt_positions=ea[2],
+                        age=ea[3], club=ea[4], foot=ea[5])
+            prof["face"] = [(lab, ea[6 + i]) for i, (lab, _) in enumerate(_FACE)]
+        prof["playstyles"] = [
+            {"playstyle": p, "tier": t} for p, t in con.execute(
+                "SELECT playstyle, tier FROM ea_fc26_playstyle WHERE ea_id=? "
+                "ORDER BY CASE tier WHEN 'plus_plus' THEN 0 WHEN 'plus' THEN 1 "
+                "ELSE 2 END, playstyle", [ea_id]).fetchall()]
+
+    if squad_row_id is not None:
+        prof["positions"] = [
+            {"role": r[0], "minutes": r[1], "share": r[2], "is_modal": r[3],
+             "eligible": r[4], "basis": r[5]} for r in con.execute(
+                "SELECT role, minutes, minutes_share, is_modal, eligible, basis "
+                "FROM squad_position_eligibility WHERE squad_row_id=? "
+                "ORDER BY minutes_share DESC NULLS LAST", [squad_row_id]).fetchall()]
+        prof["attrs"] = [
+            {"attribute": a[0], "bucket": a[1], "ea_raw": a[2], "adj": a[3],
+             "shift_s": a[4], "is_discriminator": a[5]} for a in con.execute(
+                "SELECT attribute, bucket, ea_raw, adj, shift_s, is_discriminator "
+                "FROM player_adjusted_attributes WHERE squad_row_id=? "
+                "ORDER BY adj DESC NULLS LAST", [squad_row_id]).fetchall()]
+        cov = con.execute(
+            "SELECT coverage_tier, understat_minutes, fbref_minutes, "
+            "statsbomb_minutes, empirical_minutes_total, coverage_score "
+            "FROM player_coverage_index WHERE squad_row_id=?", [squad_row_id]).fetchone()
+        if cov:
+            prof["coverage"] = {"tier": cov[0], "understat_minutes": cov[1],
+                                "fbref_minutes": cov[2], "statsbomb_minutes": cov[3],
+                                "empirical_minutes_total": cov[4], "score": cov[5]}
+    return prof
+
+
+# --------------------------------------------------------------------------- #
+# Ratings audit (V3 step 4b). Reuses the CANONICAL blend engine read-only, so the
+# audit shows the model's exact math rather than a re-implementation. The engine's
+# per-dim intermediates (EA pct / empirical pct / lambda / blended pct / delta /
+# raw empirical stats) aren't persisted, hence the live call.
+# --------------------------------------------------------------------------- #
+def blend_frame(con):
+    """The engine's per-player blend dataframe (one row per outfield squad player;
+    GKs excluded by the engine). Expensive-ish (all players) -> cache upstream."""
+    return _blend_eng.build(con)
+
+
+def _f(v):
+    """NaN/None -> None, else float (NaN != NaN). Avoids a pandas import here."""
+    return None if v is None or v != v else float(v)
+
+
+_AUDIT_MIN = {"Attack": "att_min", "Possession": "att_min", "Defense": "def_min"}
+
+
+def player_blend(df, squad_row_id) -> dict | None:
+    """Per-dimension blend breakdown for one player from blend_frame(). The exact
+    inputs to each attribute shift: EA role pct, empirical pct, lambda (with the
+    minutes + per-phase CAP behind it), the blended pct and its delta vs EA, plus
+    the raw empirical value. -> None if the player isn't in the frame (e.g. GK)."""
+    sub = df[df["squad_row_id"] == squad_row_id]
+    if sub.empty:
+        return None
+    r = sub.iloc[0]
+    dims = []
+    for d in ("Attack", "Possession", "Defense"):
+        dims.append({
+            "dim": d,
+            "ea_pct": _f(r.get(f"ea_{d}_pct")),
+            "emp_pct": _f(r.get(f"emp_{d}_pct")),
+            "lam": _f(r.get(f"lam_{d}")),
+            "cap": _blend_eng.CAP[d],
+            "blended_pct": _f(r.get(f"adj_{d}")),
+            "delta_pct": _f(r.get(f"delta_{d}")),
+            "minutes": _f(r.get(_AUDIT_MIN[d])),
+            "on_role": d in _blend_eng.RELEVANT.get(r["grp"], set()),
+            # raw empirical value feeding the percentile (per-90 for Att/Poss)
+            "empirical_value": _f(r.get(d)) if d in ("Attack", "Possession") else None,
+        })
+    return {"name": r["name"], "grp": r["grp"], "dims": dims,
+            "padj": _f(r.get("padj")), "supp": _f(r.get("supp"))}
 
 
 # --------------------------------------------------------------------------- #

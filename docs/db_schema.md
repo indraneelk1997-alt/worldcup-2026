@@ -1,6 +1,6 @@
 # DuckDB schema reference
 
-_Generated: 2026-06-22T18:07:07_  
+_Generated: 2026-06-28T14:02:33_  
 _DB: `data/processed/worldcup.duckdb`_  
 _Tables: 43_  
 
@@ -642,7 +642,7 @@ uv run python src/tools/dump_db_schema.py
   adj_pct = None
   lambda_dim = 0.0
   model_version = 'adj_attr_v1'
-  created_at = datetime.datetime(2026, 6, 22, 18, 4, 14, 80587)
+  created_at = datetime.datetime(2026, 6, 26, 13, 33, 36, 131744)
 ```
 
 ### `player_adjusted_attributes_wide`
@@ -1733,6 +1733,7 @@ uv run python src/tools/dump_db_schema.py
 | `source_url` | `VARCHAR` | YES |  |
 | `ingested_at` | `TIMESTAMP` | YES |  |
 | `primary_position_group` | `VARCHAR` | YES |  |
+| `understat_player_id` | `BIGINT` | YES |  |
 
 **Declared foreign keys**: none
 
@@ -1761,6 +1762,7 @@ uv run python src/tools/dump_db_schema.py
   source_url = 'https://en.wikipedia.org/wiki/2026_FIFA_World_Cup_squads'
   ingested_at = datetime.datetime(2026, 6, 11, 12, 22, 32, 522418)
   primary_position_group = 'GK'
+  understat_player_id = None
 ```
 
 ### `zone_xt`

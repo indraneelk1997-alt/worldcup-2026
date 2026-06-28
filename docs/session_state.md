@@ -3,8 +3,10 @@
 > **Fast-changing.** This is "where we are right now." Updated at the end
 > of each working session. For permanent facts/rules, see `Claude.md`.
 
-**Last updated:** end of S44 (2026-06-22) — dark-screen fix SHIPPED + squad
-coverage index + dashboard coverage page + EA relink (44 verified overrides).
+**Last updated:** end of S45 (2026-06-28) — dashboard V3 (tabs+radar, player
+selection+profile, ratings-audit page) + Understat empirical relink (new
+`understat_player_id` column, 40 verified overrides, engine switched to id-based
+lookup, ratings re-derived — Mbappé & co. now have their attack data).
 **Current version line:** **S42: position-aware XI selection + best-fit formation BUILT & verified.** Item 9 (`docs/item9_xi_selection.md`). Replaced group-only `autopick_xi` with empirical, side-aware slotting off a new `squad_position_eligibility` table (modal/>20%-minutes rule across Understat+FBref+StatsBomb, EA + coarse-group fallbacks) and Hungarian assignment. Headline bugs dead (Cucurella→LB not RCB, Kane→ST). `best_formation` auto-picks the max-fit shape per squad (FRA/ARG→3-5-2, ENG→4-1-4-1…). **DB now 42 tables** (added `squad_position_eligibility`; first DDL since S35 — a derived rollup, no FK; `db_schema.md` regenerated). **Dashboard V2** (same session): info-panel formation dropdown (default auto best-fit) + player swap, both live-recomputing. Player-stats panel is the only V2 piece left. Dashboard V1 (vertical formation pitch + strategy) BUILT & accepted (S41). Chessboard model COMPLETE — items 1–8 all DONE & validated.
 Item 8 step **E (bivariate Poisson → scoreline)** built + validated S38: a full
 team-vs-team matchup now runs end to end (adjusted attrs → occupancy boards → zone
@@ -13,6 +15,75 @@ battles → aggregated index → VOLUME → bivariate-Poisson scoreline). Accept
 band). `λ₃=0` LOCKED; `VOLUME=199.4` promoted to `zone_battle.json`. DB unchanged at
 **41 tables** (read-only orchestration; no DDL). **Next agenda: dashboard visual design**
 (+ full-tournament sim). Design doc: `docs/item8_aggregation.md`.
+
+## S45 — dashboard V3 + ratings-audit page + Understat empirical relink
+
+Long Cowork session (shell-relay). Built dashboard V3, then the ratings-audit page
+surfaced a real model-data bug, which we fixed end-to-end. **DB still 43 tables;
++1 column `wc2026_squad.understat_player_id` (first squad-table column add).**
+
+### 1. Dashboard V3 (`dashboard/app.py`, `model_api.py`)
+- Info panel → **Team / Player tabs**. Team tab: formation knob + **two-team
+  playstyle radar** (`go.Scatterpolar`, red A / blue B, per-vertex value labels)
+  replacing the 5 progress bars; swaps below.
+- **Player clickability**: native `st.plotly_chart(on_select="rerun",
+  selection_mode="points")`. Single token trace + per-point opacity/size arrays for
+  highlight/fade (so the click index still maps to a slot). Selection driven by our
+  own `sel_slot_<side>` session key (updated only on a real click → one rerun; empty
+  events ignored → no oscillation); explicit **Clear** button.
+- **Player tab** (`player_profile()` adapter): identity, **mean adjusted rating per
+  bucket** (ATT/DEF/POS/SKL/IQ/PHY — replaced EA face stats), per-phase empirical
+  adjustment line, empirical positions, EA playstyles, top-5 adjusted attributes
+  (multiselect, max 5). Selecting a player **swaps the pitch backdrop to their
+  kernel** (`player_kernel()`). NB: dropped the misleading single "Adj rating"
+  scalar (a flat mean over discriminators flattened specialists — Yamal 64.7 <
+  Henderson 71.6); EA `ovr` already is the position-weighted overall.
+
+### 2. Ratings-audit page (`Section` radio → "Ratings audit")
+- Reuses the canonical blend engine **live**: `model_api.blend_frame()` wraps
+  `_probe_adjusted_ratings.build(con)` (cached). Per player: per-phase blend table
+  (EA pct · empirical pct · λ · blended pct · Δ), raw empirical inputs, and the full
+  EA-raw→adj attribute table. Single source of truth, no re-implementation drift.
+
+### 3. Understat empirical relink (`docs/understat_relink.md`)
+- **Audit surfaced the bug:** the engine matched Understat by **hardened name**,
+  silently dropping attack/possession data for variant names. Mbappé had `att_min=0`
+  despite Understat holding 5,561 min as "Kylian Mbappe-Lottin". `players` is a union
+  of FBref + Understat id-spaces (separate rows per person), bridged only by name.
+- **Fix (Option 2 — persisted column):** `resolve_understat_links.py` populates new
+  `wc2026_squad.understat_player_id` = verified override ELSE unique hardened-name
+  match (reproduces old links → no regressions; `multi`=0 after disambiguation).
+  Engine (`_probe_adjusted_ratings.build`) now aggregates Understat **by player_id**
+  via that column, not by name.
+- **Overrides** `data/config/understat_id_overrides.json` (40): from
+  `_probe_understat_relink.py` (club-corroborated, mononym-guarded — club guard
+  correctly pinned Gabriel/Arsenal, Fabián/PSG, Éderson/Atalanta; split the two
+  Vitinhas and two Idrissa Gueyes). 37 auto + Kadıoğlu (manual) + 2 multi-splits.
+  856 Cherki kept (Understat mislabel of Rayan's record); Singo/Meschak dropped.
+- **Re-derived:** `derive_adjusted_attributes --apply` (players 776; discriminator
+  shifts 4541→4816) → `make_dashboard_db`. **Result: Mbappé attack pct 99**, Vitinha
+  → PSG record, Idrissa Gueye → Everton. att_min>0 468→506.
+
+### Files (S45, uncommitted at write)
+- New: `docs/dashboard_v3_design.md`, `docs/understat_relink.md`,
+  `src/load/v2_ingest/{_probe_understat_relink,resolve_understat_links}.py`,
+  `data/config/understat_id_overrides.json`, `README.md`.
+- Modified: `dashboard/{app,model_api}.py`,
+  `src/load/v2_ingest/_probe_adjusted_ratings.py`,
+  `data/processed/worldcup.duckdb` (+col, re-derived attrs),
+  `data/processed/worldcup_dashboard.duckdb` (rebuilt), `docs/{session_state,db_schema}.md`.
+- **DDL:** +1 column `wc2026_squad.understat_player_id` (43 tables unchanged).
+- Untracked regenerable: `understat_relink_review.csv`,
+  `data/config/understat_id_overrides.proposed.json`.
+
+### S46 openers
+1. Dashboard V3 **step 5** (two-team overlaid red/blue zonal-battle heatmap, shared
+   frame) and **step 6** (team-stats top/bottom zones by Σ occupancy×rating) — still
+   pending; design in `docs/dashboard_v3_design.md`.
+2. Audit page **competition-backing** (League/Continental/International, matches &
+   seasons) — Understat = big-5 domestic, FBref = UEFA comps (no overlap).
+3. Consider making `player_coverage_index` adopt `understat_player_id` for consistent
+   per-source minutes (Player-tab coverage line).
 
 ## S44 — dark-screen fix shipped + player coverage index + EA relink
 

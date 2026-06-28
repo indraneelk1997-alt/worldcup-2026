@@ -36,3 +36,5 @@ data/config/zone_battle.parsed.json
 Thumbs.db
 ea_relink_review.csv
 data/config/ea_id_overrides.proposed.json
+understat_relink_review.csv
+data/config/understat_id_overrides.proposed.json

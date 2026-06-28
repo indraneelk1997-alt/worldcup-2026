@@ -62,20 +62,21 @@ def build(con):
     with ea_<dim>/ea_<dim>_pct/adj_<dim>/lam_<dim> etc. Caller owns the connection
     (so other probes can reuse this without re-deriving the empirical pipeline)."""
     sq = con.sql("SELECT squad_row_id, name_norm, nation_code nat, primary_position_group grp, "
-                 "ea_id, our_player_id FROM wc2026_squad").df()
+                 "ea_id, our_player_id, understat_player_id FROM wc2026_squad").df()
 
     ea = eab.add_ratings(con.sql(
         f"SELECT {', '.join(['ea_id'] + eab.ALL_ATTRS)} FROM ea_fc26_player").df())
     ea = ea[["ea_id"] + DIMS].rename(columns={d: f"ea_{d}" for d in DIMS})
     sq = sq.merge(ea, on="ea_id", how="left")
 
-    us = con.sql("SELECT lower(strip_accents(pl.player_name)) nn, sum(p.minutes) mins, "
-                 "sum(p.goals) g, sum(p.xa) xa, sum(p.key_passes) kp, "
-                 "sum(p.xg_buildup) xgb, sum(p.xg_chain) xgc "
-                 "FROM player_match_stats p JOIN players pl ON p.player_id=pl.player_id "
-                 "GROUP BY 1").df()
-    us["h"] = us["nn"].map(hard)
-    us = us.groupby("h")[["mins", "g", "xa", "kp", "xgb", "xgc"]].sum()
+    # Understat aggregated BY player_id, looked up via wc2026_squad.understat_player_id
+    # (resolve_understat_links.py). Replaces the old hardened-NAME match, which
+    # dropped variant-name players (Mbappé->"Mbappe-Lottin") and summed distinct
+    # same-name players (the two Vitinhas). S45 / docs/understat_relink.md.
+    us = con.sql("SELECT p.player_id, sum(p.minutes) mins, sum(p.goals) g, "
+                 "sum(p.xa) xa, sum(p.key_passes) kp, sum(p.xg_buildup) xgb, "
+                 "sum(p.xg_chain) xgc FROM player_match_stats p "
+                 "GROUP BY 1").df().set_index("player_id")
 
     dfm = con.sql("""
         WITH team_shots AS (
@@ -97,9 +98,9 @@ def build(con):
 
     rows = []
     for r in sq.itertuples():
-        h = hard(r.name_norm)
         opid = int(r.our_player_id) if pd.notna(r.our_player_id) else None
-        u = us.loc[h] if h in us.index else None
+        upid = int(r.understat_player_id) if pd.notna(r.understat_player_id) else None
+        u = us.loc[upid] if (upid is not None and upid in us.index) else None
         d = dW.loc[opid] if (opid is not None and opid in dW.index) else None
         um = float(u["mins"]) if u is not None else 0.0
         dm = float(d["mins"]) if d is not None else 0.0

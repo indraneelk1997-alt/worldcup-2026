@@ -33,7 +33,9 @@ GRID = 6                 # scoreline matrix shown for 0..GRID goals each side
 FILL = {"GK": "#fde68a", "DEF": "#bfdbfe", "MID": "#fed7aa", "FWD": "#fecaca"}
 EDGE = {"GK": "#ca8a04", "DEF": "#2563eb", "MID": "#ea580c", "FWD": "#dc2626"}
 INK = "#0f172a"
+FADE_INK = "rgba(15,23,42,0.30)"          # dimmed token text when another is selected
 PITCH = "#9ccc9c"
+RADAR_A, RADAR_B = "#dc2626", "#2563eb"   # team A = red, team B = blue (V3 overlays)
 
 VIEW_LABELS = {"standard": "Standard formation", "possession": "Possession-balanced",
                "attack": "Attack profile", "defense": "Defense profile"}
@@ -56,6 +58,14 @@ def get_nations(formation: str) -> list[str]:
 @st.cache_data
 def get_labels() -> dict[str, str]:
     return api.nation_names()
+
+
+@st.cache_data
+def get_blend():
+    """Canonical engine's blend frame (all outfield players). Cached: it's one
+    all-player build, reused across the audit page's player picks."""
+    con, _ = get_setup(DEFAULT_FORMATION)
+    return api.blend_frame(con)
 
 
 # Matchup is computed live (not cached): it now depends on per-team formation +
@@ -105,10 +115,14 @@ def _token_label(t: dict) -> str:
     return f"{sn} {t['ovr']}" if t.get("ovr") else sn
 
 
-def draw_pitch(team: dict, view: str, up: bool, title: str) -> go.Figure:
+def draw_pitch(team: dict, view: str, up: bool, title: str,
+               layout: list[dict] | None = None, sel_slot=None,
+               kernel_grid=None) -> go.Figure:
     W, L = api.PITCH_WID, api.PITCH_LEN
-    layout = api.pitch_layout(team, view)
-    hm = api.team_heatmap(team, view)
+    if layout is None:
+        layout = api.pitch_layout(team, view)
+    # backdrop = the selected player's kernel when one is supplied, else the team
+    hm = kernel_grid if kernel_grid is not None else api.team_heatmap(team, view)
     x_centers = [_vmap(0, l, up)[0] for l in range(api.N_LANES)]
     y_centers = [_vmap(b, 0, up)[1] for b in range(api.N_BANDS)]
 
@@ -123,14 +137,23 @@ def draw_pitch(team: dict, view: str, up: bool, title: str) -> go.Figure:
     lx, ly = _pitch_lines_v()
     fig.add_trace(go.Scatter(x=lx, y=ly, mode="lines",
                              line=dict(color="white", width=2), hoverinfo="skip"))
-    # 3. tokens
+    # 3. tokens (single trace so a click's point index maps 1:1 to layout).
+    # Selection highlight: the picked token grows + thick-outlines, the rest fade
+    # (per-point opacity/size/colour arrays — no trace split). V3 step 3.
     pts = [_vmap(t["band"], t["lane"], up) for t in layout]
+    is_sel = [t["slot_no"] == sel_slot for t in layout]
+    faded = [(sel_slot is not None) and not s for s in is_sel]
+    m_size = [30 if s else 22 if f else 24 for s, f in zip(is_sel, faded)]
+    m_op = [0.30 if f else 1.0 for f in faded]
+    m_lw = [4 if s else 2 for s in is_sel]
+    ink = [FADE_INK if f else INK for f in faded]
     fig.add_trace(go.Scatter(
         x=[p[0] for p in pts], y=[p[1] for p in pts], mode="markers+text",
-        marker=dict(size=24, color=[FILL[t["group"]] for t in layout],
-                    line=dict(width=2, color=[EDGE[t["group"]] for t in layout])),
+        marker=dict(size=m_size, opacity=m_op,
+                    color=[FILL[t["group"]] for t in layout],
+                    line=dict(width=m_lw, color=[EDGE[t["group"]] for t in layout])),
         text=[t["position_code"] for t in layout], textposition="middle center",
-        textfont=dict(size=9, color=INK),
+        textfont=dict(size=9, color=ink),
         customdata=[[t.get("name") or "", t["position_code"], t.get("ovr") or 0]
                     for t in layout],
         hovertemplate="<b>%{customdata[0]}</b> · %{customdata[1]} · "
@@ -139,7 +162,7 @@ def draw_pitch(team: dict, view: str, up: bool, title: str) -> go.Figure:
     fig.add_trace(go.Scatter(
         x=[p[0] for p in pts], y=[p[1] - 4.5 for p in pts], mode="text",
         text=[_token_label(t) for t in layout], textposition="middle center",
-        textfont=dict(size=9, color=INK), hoverinfo="skip"))
+        textfont=dict(size=9, color=ink), hoverinfo="skip"))
 
     fig.update_xaxes(visible=False, range=[-6, W + 6])
     fig.update_yaxes(visible=False, range=[-6, L + 6], scaleanchor="x", scaleratio=1)
@@ -147,6 +170,25 @@ def draw_pitch(team: dict, view: str, up: bool, title: str) -> go.Figure:
         plot_bgcolor=PITCH, paper_bgcolor="rgba(0,0,0,0)",
         margin=dict(l=6, r=6, t=8, b=6), height=560, showlegend=False)
     return fig
+
+
+def _selected_slot(ev, layout: list[dict]):
+    """Map a Streamlit plotly selection event (or the persisted widget state, same
+    shape) to a slot_no. Tokens/labels are the last two traces; heatmap (curve 0)
+    and pitch lines (curve 1) aren't players, so skip them. -> slot_no or None."""
+    if not ev:
+        return None
+    try:
+        pts = ev["selection"]["points"]
+    except (KeyError, TypeError):
+        return None
+    for p in pts or []:
+        if p.get("curve_number") in (0, 1):          # heatmap / pitch markings
+            continue
+        idx = p.get("point_index", p.get("point_number"))
+        if isinstance(idx, int) and 0 <= idx < len(layout):
+            return layout[idx]["slot_no"]
+    return None
 
 
 # --- scoreline matrix (blue heatmap, matplotlib-free) ----------------------- #
@@ -162,6 +204,59 @@ def style_scoreline(M: np.ndarray, a: str, b: str):
         return f"background-color: rgba(37, 99, 235, {a_:.3f}); color: white"
 
     return df.style.format("{:.1f}%").map(blue)
+
+
+# --- playstyle radar (both teams overlaid; V3) ------------------------------ #
+def radar_chart(team_a: dict, team_b: dict, name_a: str, name_b: str) -> go.Figure:
+    """5-axis playstyle radar overlaying both teams (red A / blue B). Pure
+    re-render of team['axes'] (0–1 percentiles) — replaces the V2 progress bars."""
+    keys = [k for k, _ in AXIS_LABELS]
+    cats = [lab for _, lab in AXIS_LABELS]
+
+    def vals(team: dict) -> list[float]:
+        return [min(max(float(team["axes"].get(k, 0.0)), 0.0), 1.0) for k in keys]
+
+    va, vb = vals(team_a), vals(team_b)
+    theta = cats + [cats[0]]                       # close the polygon
+    fig = go.Figure()
+    fig.add_trace(go.Scatterpolar(
+        r=va + [va[0]], theta=theta, fill="toself", name=name_a,
+        line=dict(color=RADAR_A), fillcolor="rgba(220,38,38,0.22)",
+        hovertemplate="%{theta}: %{r:.2f}<extra>" + name_a + "</extra>"))
+    fig.add_trace(go.Scatterpolar(
+        r=vb + [vb[0]], theta=theta, fill="toself", name=name_b,
+        line=dict(color=RADAR_B), fillcolor="rgba(37,99,235,0.22)",
+        hovertemplate="%{theta}: %{r:.2f}<extra>" + name_b + "</extra>"))
+
+    # Per-vertex value labels, coloured per team. On each axis the higher team's
+    # label sits just OUTSIDE its vertex, the lower one just INSIDE — so the two
+    # never collide (and they split even when equal: A out, B in).
+    OFF = 0.07
+
+    def _lab_r(mine: list[float], other: list[float], higher_out: bool) -> list[float]:
+        out = []
+        for m, o in zip(mine, other):
+            outward = (m >= o) if higher_out else (m > o)
+            out.append(min(max(m + (OFF if outward else -OFF), 0.05), 1.0))
+        return out
+
+    fig.add_trace(go.Scatterpolar(
+        r=_lab_r(va, vb, True), theta=cats, mode="text",
+        text=[f"{v:.2f}" for v in va], textfont=dict(color=RADAR_A, size=10),
+        showlegend=False, hoverinfo="skip"))
+    fig.add_trace(go.Scatterpolar(
+        r=_lab_r(vb, va, False), theta=cats, mode="text",
+        text=[f"{v:.2f}" for v in vb], textfont=dict(color=RADAR_B, size=10),
+        showlegend=False, hoverinfo="skip"))
+
+    fig.update_layout(
+        polar=dict(radialaxis=dict(visible=True, range=[0, 1],
+                                   tickvals=[0.25, 0.5, 0.75, 1.0],
+                                   showticklabels=False)),   # values now on the vertices
+        showlegend=True, height=340, margin=dict(l=40, r=40, t=20, b=40),
+        legend=dict(orientation="h", yanchor="bottom", y=-0.18, x=0.5, xanchor="center"),
+        paper_bgcolor="rgba(0,0,0,0)")
+    return fig
 
 
 # --- info / strategy panels ------------------------------------------------- #
@@ -191,24 +286,143 @@ def _render_swaps(con, team: dict, nation: str, P: dict) -> None:
                 st.rerun()
 
 
+def _render_player(tok: dict, prof: dict | None) -> None:
+    """Player tab body: identity, EA face stats, empirical positions, EA
+    playstyles, and the adjusted-rating attributes (top-5 default, 5-at-a-time
+    multiselect). V3 step 4."""
+    st.subheader(tok.get("name") or "—")
+    ovr = tok.get("ovr")
+    sub = f"{tok['position_code']} · {tok['group']}"
+    if prof and prof.get("ea_position"):
+        sub += f" · EA {prof['ea_position']}"
+        if prof.get("alt_positions"):
+            sub += f" ({prof['alt_positions']})"
+    if prof and prof.get("club"):
+        sub += f" · {prof['club']}"
+    st.caption(sub)
+
+    if not prof:
+        st.info("No detailed profile for this player (likely the GK or an "
+                "unrated player).")
+        return
+
+    cov = prof.get("coverage")
+    c1, c2 = st.columns([0.42, 0.58])
+    c1.metric("EA overall (raw)", ovr or prof.get("overall") or "—",
+              help="EA's own position-weighted overall — the RAW EA rating, not "
+                   "empirically adjusted. The empirical effect is the per-phase "
+                   "line below; ratings adjust per attribute, not as one overall.")
+    with c2:
+        st.caption("Data coverage")
+        if cov:
+            lab, hexc = api.COVERAGE_TIERS.get(cov["tier"], (cov["tier"], "#9ca3af"))
+            st.markdown(
+                f"<span style='background:{hexc};color:#fff;padding:3px 10px;"
+                f"border-radius:8px;font-size:0.9rem'>{lab}</span>",
+                unsafe_allow_html=True)
+        else:
+            st.markdown("—")
+
+    # What the empirical data actually did: the per-phase shift (uniform within a
+    # bucket). Replaces the misleading single 'Adj rating' scalar (S45 finding —
+    # a flat mean over discriminators flattened specialists like Yamal).
+    shifts = {}
+    for a in prof["attrs"]:
+        s = a["shift_s"] or 0.0
+        if abs(s) > 1e-9:
+            shifts[a["bucket"]] = s
+    if shifts:
+        parts = [f"{b} {'+' if s > 0 else ''}{s:.1f}"
+                 for b, s in sorted(shifts.items(), key=lambda x: -x[1])]
+        st.caption("**Empirical adjustment** vs EA raw, by phase:  "
+                   + "  ·  ".join(parts) + "   · other phases unchanged")
+    else:
+        st.caption("**Empirical adjustment:** none applied (EA-only or unrated).")
+
+    # Mean ADJUSTED rating per bucket (our buckets, not EA's face stats) — adjusted
+    # where the empirical blend shifted the attribute, else the raw EA value.
+    if prof["attrs"]:
+        bvals: dict[str, list[float]] = {}
+        for a in prof["attrs"]:
+            if a["adj"] is not None:
+                bvals.setdefault(a["bucket"], []).append(a["adj"])
+        order = [("Attack", "ATT"), ("Defense", "DEF"), ("Possession", "POS"),
+                 ("Skills", "SKL"), ("IQ", "IQ"), ("Physical", "PHY")]
+        st.caption("Adjusted rating by bucket (mean of the bucket's attributes)")
+        for col, (bk, lab) in zip(st.columns(6), order):
+            vs = bvals.get(bk, [])
+            col.metric(lab, f"{sum(vs) / len(vs):.0f}" if vs else "—")
+
+    if cov and (cov["empirical_minutes_total"] or 0) > 0:
+        st.caption(
+            "Backed by club + international match data. A clean per-competition "
+            "breakdown (League / Continental / International — matches & seasons, "
+            "de-duplicated across data sources) comes with the ratings-audit view.")
+    elif cov:
+        st.caption("No empirical match data (EA-only or unrated).")
+
+    if prof["positions"]:
+        st.markdown("**Positions (empirical)**")
+        bits = []
+        for p in prof["positions"][:5]:
+            share = (p["share"] or 0) * 100
+            mark = "★" if p["is_modal"] else ("✓" if p["eligible"] else "")
+            bits.append(f"{p['role']} {share:.0f}%{(' ' + mark) if mark else ''}")
+        st.caption("  ·  ".join(bits) + "   (★ modal · ✓ eligible)")
+
+    if prof["playstyles"]:
+        st.markdown("**Playstyles (EA)**")
+        sym = {"plus": " +", "plus_plus": " ++"}
+        st.caption("  ·  ".join(f"{ps['playstyle']}{sym.get(ps['tier'], '')}"
+                                for ps in prof["playstyles"]))
+
+    attrs = prof["attrs"]
+    if attrs:
+        st.markdown("**Adjusted ratings**  ")
+        names = [a["attribute"] for a in attrs]              # already adj-desc
+        pick = st.multiselect(
+            "Attributes (top 5 by default · max 5)", names, default=names[:5],
+            max_selections=5, key=f"attrs_{tok['slot_no']}")
+        by = {a["attribute"]: a for a in attrs}
+        for nm in (pick or names[:5]):
+            a = by[nm]
+            adj, raw, sh = a["adj"], a["ea_raw"], a["shift_s"] or 0.0
+            v = min(max((adj or 0) / 100.0, 0.0), 1.0)
+            delta = f"  ·  raw {raw:.0f} → {adj:.0f}" if abs(sh) > 1e-9 else ""
+            st.progress(v, text=f"{nm.replace('_', ' ')} — {adj:.0f}{delta}")
+        st.caption("Values are EA-adjusted where empirical data shifted them, "
+                   "else the raw EA rating.")
+
+
 def render_panel(con, team: dict, view: str, name: str, nation: str,
-                 fmts: list[str], auto_fmt: str, P: dict) -> None:
-    st.subheader(name)
-    # knob 1 — formation: current shape shown, dropdown to change; the 5 axes and
-    # the pitch below reassemble for the chosen shape.
-    st.selectbox("Formation", fmts, key=f"fmt_{nation}",
-                 help="Defaults to the auto-picked best-fit shape; change it to "
-                      "re-pick this squad's XI for a different formation.")
-    gk = (f"{team['gk_name']} ({team['gk_ovr']})" if team.get("gk_ovr")
-          else team.get("gk_name") or "—")
-    auto = " · auto best-fit" if team["formation"] == auto_fmt else ""
-    st.caption(f"{VIEW_LABELS[view]} · GK {gk}{auto}")
-    st.caption("Team playstyle (0–1 percentile vs the field)")
-    ax = team["axes"]
-    for key, label in AXIS_LABELS:
-        v = min(max(float(ax.get(key, 0.0)), 0.0), 1.0)
-        st.progress(v, text=f"{label} — {v:.2f}")
-    _render_swaps(con, team, nation, P)
+                 fmts: list[str], auto_fmt: str, P: dict,
+                 team_a: dict, team_b: dict, name_a: str, name_b: str,
+                 sel_tok: dict | None = None, profile: dict | None = None) -> None:
+    """Info panel, V3: a Team tab (formation knob + two-team playstyle radar +
+    swaps) and a Player tab (populated by pitch selection — step 3/4)."""
+    tab_team, tab_player = st.tabs(["Team", "Player"])
+    with tab_team:
+        st.subheader(name)
+        # knob 1 — formation: current shape shown, dropdown to change; the radar
+        # and the pitch below reassemble for the chosen shape.
+        st.selectbox("Formation", fmts, key=f"fmt_{nation}",
+                     help="Defaults to the auto-picked best-fit shape; change it to "
+                          "re-pick this squad's XI for a different formation.")
+        gk = (f"{team['gk_name']} ({team['gk_ovr']})" if team.get("gk_ovr")
+              else team.get("gk_name") or "—")
+        auto = " · auto best-fit" if team["formation"] == auto_fmt else ""
+        st.caption(f"{VIEW_LABELS[view]} · GK {gk}{auto}")
+        st.caption("Playstyle (0–1 percentile vs the field) — both teams "
+                   "overlaid (red / blue per legend)")
+        st.plotly_chart(radar_chart(team_a, team_b, name_a, name_b),
+                        use_container_width=True)
+        _render_swaps(con, team, nation, P)
+    with tab_player:
+        if sel_tok is None:
+            st.caption("Click a player on the pitch to see their profile "
+                       "(positions, playstyles, adjusted ratings).")
+        else:
+            _render_player(sel_tok, profile)
 
 
 def render_strategy(team: dict, name: str) -> None:
@@ -263,6 +477,78 @@ def render_coverage_page(con, nations, lbl) -> None:
                  hide_index=True, height=560)
 
 
+# --- ratings-audit page (V3 step 4b) ---------------------------------------- #
+def _fmt_pct(v) -> str:
+    return "—" if v is None else f"{v:.0f}"
+
+
+def render_audit_page(con, nations, lbl) -> None:
+    st.title("🔬 Ratings audit")
+    st.caption(
+        "How each player's EA rating is blended toward empirical performance.  "
+        "blended pct = (1−λ)·EA pct + λ·empirical pct (percentiles within position "
+        "group);  λ = min(minutes/900, 1)·CAP, CAP = Attack 0.60 / Possession 0.50 "
+        "/ Defense 0.25, and 0 for off-role phases.  A positive Δ means empirical "
+        "data raised the player; each attribute's shift follows from its phase Δ.")
+
+    df = get_blend()
+    nation = st.selectbox("Nation", nations, format_func=lbl,
+                          index=nations.index("ESP") if "ESP" in nations else 0)
+    players = con.execute(
+        "SELECT squad_row_id, player_name, ea_id FROM wc2026_squad "
+        "WHERE nation_code=? AND primary_position_group <> 'GK' "
+        "ORDER BY player_name", [nation]).fetchall()
+    if not players:
+        st.info("No outfield players for this nation.")
+        return
+    pick = st.selectbox("Player", players, format_func=lambda p: p[1],
+                        key=f"audit_pl_{nation}")
+    srid, pname, ea_id = pick
+    st.subheader(pname)
+
+    pb = api.player_blend(df, srid)
+    if pb is None:
+        st.info("No blend record for this player (GK, or no empirical/EA link — "
+                "their attributes stay at the raw EA prior).")
+    else:
+        st.caption(f"Position group: **{pb['grp']}**")
+        rows = [{
+            "Phase": d["dim"],
+            "On-role": "✓" if d["on_role"] else "—",
+            "Minutes": "—" if d["minutes"] is None else f"{d['minutes']:,.0f}",
+            "EA pct": _fmt_pct(d["ea_pct"]),
+            "Empirical pct": _fmt_pct(d["emp_pct"]),
+            "λ": "—" if d["lam"] is None else f"{d['lam']:.2f}",
+            "Blended pct": _fmt_pct(d["blended_pct"]),
+            "Δ pct": "—" if d["delta_pct"] is None else f"{d['delta_pct']:+.0f}",
+        } for d in pb["dims"]]
+        st.markdown("**Per-phase blend** — the inputs to every attribute shift")
+        st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+        bits = []
+        for d in pb["dims"]:
+            if d["empirical_value"] is not None:
+                unit = "(g+xa)/90" if d["dim"] == "Attack" else "(kp+xgB+xgC)/90"
+                bits.append(f"{d['dim']} {d['empirical_value']:.2f} {unit}")
+        if pb["padj"] is not None:
+            bits.append(f"Defense padj {pb['padj']:.1f} · suppression {pb['supp']:.1f}")
+        if bits:
+            st.caption("Empirical inputs:  " + "  ·  ".join(bits))
+
+    prof = api.player_profile(con, srid, ea_id)
+    if prof["attrs"]:
+        st.markdown("**Attributes — EA raw → adjusted**")
+        arows = [{
+            "Attribute": a["attribute"].replace("_", " "),
+            "Bucket": a["bucket"],
+            "Disc.": "✓" if a["is_discriminator"] else "—",
+            "EA raw": None if a["ea_raw"] is None else round(a["ea_raw"]),
+            "Shift": round(a["shift_s"] or 0.0, 2),
+            "Adjusted": None if a["adj"] is None else round(a["adj"], 1),
+        } for a in sorted(prof["attrs"], key=lambda a: (a["bucket"], a["attribute"]))]
+        st.dataframe(pd.DataFrame(arows), hide_index=True,
+                     use_container_width=True, height=420)
+
+
 # --- app -------------------------------------------------------------------- #
 def main():
     st.set_page_config(page_title="WC2026 Match Simulator", layout="wide")
@@ -277,10 +563,14 @@ def main():
         return f"{name} ({code})" if name else code
 
     # Section switch: the match simulator (default) or the squad-coverage view.
-    section = st.sidebar.radio("Section", ["Match simulator", "Squad coverage"],
-                               key="section")
+    section = st.sidebar.radio(
+        "Section", ["Match simulator", "Squad coverage", "Ratings audit"],
+        key="section")
     if section == "Squad coverage":
         render_coverage_page(con, nations, lbl)
+        return
+    if section == "Ratings audit":
+        render_audit_page(con, nations, lbl)
         return
 
     with st.sidebar:
@@ -327,17 +617,53 @@ def main():
     is_a = side == a
     team = r["team_a"] if is_a else r["team_b"]
     auto_fmt = auto_a if is_a else auto_b
+    layout = api.pitch_layout(team, view)
+    pkey = f"pitch_sel_{side}"          # the plotly widget's own selection state
+    selkey = f"sel_slot_{side}"         # OUR derived selection (drives the highlight)
+
+    # Highlight is driven by our own session key, not the widget's transient
+    # selection: redrawing the figure can drop Plotly's selection, so reading it
+    # back would flicker. We update our key only on a real (non-empty) click and
+    # force one rerun; an empty event (e.g. a redraw reset) is ignored, so there's
+    # no oscillation. Clearing is an explicit button.
+    sel_slot = st.session_state.get(selkey)
+    if sel_slot is not None and not any(t["slot_no"] == sel_slot for t in layout):
+        sel_slot = None                 # stale after a formation/side change
+    sel_tok = next((t for t in layout if t["slot_no"] == sel_slot), None)
+    # when a player is selected, the pitch backdrop becomes their kernel
+    kernel = api.player_kernel(team, sel_slot, view) if sel_slot is not None else None
+
     pcol, icol = st.columns([0.46, 0.54])
     with pcol:
-        st.plotly_chart(
-            draw_pitch(team, view, up=is_a, title=f"{lbl(side)} — {team['formation']}"),
-            use_container_width=True)
+        event = st.plotly_chart(
+            draw_pitch(team, view, up=is_a, layout=layout, sel_slot=sel_slot,
+                       kernel_grid=kernel,
+                       title=f"{lbl(side)} — {team['formation']}"),
+            use_container_width=True, key=pkey,
+            on_select="rerun", selection_mode="points")
+        clicked = _selected_slot(event, layout)
+        if clicked is not None and clicked != sel_slot:
+            st.session_state[selkey] = clicked
+            st.rerun()
+        cap, btn = st.columns([0.72, 0.28])
+        if kernel is not None:
+            cap.caption(f"Backdrop: {sel_tok['name']}'s {VIEW_LABELS[view].lower()} "
+                        "kernel — click another player or Clear for the team view.")
+        else:
+            cap.caption("Click a player to highlight them and load their profile.")
+        if sel_slot is not None and btn.button("Clear", key=f"clr_{side}",
+                                               use_container_width=True):
+            st.session_state[selkey] = None
+            st.rerun()
+    srid = team.get("sid", {}).get(sel_slot) if sel_slot is not None else None
+    profile = (api.player_profile(con, srid, sel_tok.get("ea_id"))
+               if sel_tok is not None else None)
     with icol:
-        render_panel(con, team, view, lbl(side), side, fmts, auto_fmt, P)
+        render_panel(con, team, view, lbl(side), side, fmts, auto_fmt, P,
+                     r["team_a"], r["team_b"], lbl(a), lbl(b), sel_tok, profile)
 
     # full-width strategy strip — uses the whole screen, not a narrow column
     render_strategy(team, lbl(side))
-    st.caption("Player attribute detail — coming next.")
 
     with st.expander("Scoreline probability matrix", expanded=True):
         st.caption(f"Rows = {lbl(a)} goals · columns = {lbl(b)} goals · "
