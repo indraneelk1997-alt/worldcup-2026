@@ -3,10 +3,13 @@
 > **Fast-changing.** This is "where we are right now." Updated at the end
 > of each working session. For permanent facts/rules, see `Claude.md`.
 
-**Last updated:** end of S45 (2026-06-28) — dashboard V3 (tabs+radar, player
-selection+profile, ratings-audit page) + Understat empirical relink (new
-`understat_player_id` column, 40 verified overrides, engine switched to id-based
-lookup, ratings re-derived — Mbappé & co. now have their attack data).
+**Last updated:** end of S46 (2026-06-29) — dashboard V3 **horizontal pitch
+rework**: both teams on one shared frame, 5 pitch toggles (Team A/B · Heatmap ·
+Zones · Battle overlay), reliable Highlight-player dropdown (pitch-click deferred to
+the web-app port), appearance sliders + gentler warm/cool gradients, single-team
+surface + **battle overlay** (A-attack vs B-defence, per-team phase for surfaces AND
+tokens, swap). Occupancy kernel audited — **NOT buggy** (per-slot sums uniform ~1.0;
+the "blob" is sum-of-broad-kernels). No model/DB change.
 **Current version line:** **S42: position-aware XI selection + best-fit formation BUILT & verified.** Item 9 (`docs/item9_xi_selection.md`). Replaced group-only `autopick_xi` with empirical, side-aware slotting off a new `squad_position_eligibility` table (modal/>20%-minutes rule across Understat+FBref+StatsBomb, EA + coarse-group fallbacks) and Hungarian assignment. Headline bugs dead (Cucurella→LB not RCB, Kane→ST). `best_formation` auto-picks the max-fit shape per squad (FRA/ARG→3-5-2, ENG→4-1-4-1…). **DB now 42 tables** (added `squad_position_eligibility`; first DDL since S35 — a derived rollup, no FK; `db_schema.md` regenerated). **Dashboard V2** (same session): info-panel formation dropdown (default auto best-fit) + player swap, both live-recomputing. Player-stats panel is the only V2 piece left. Dashboard V1 (vertical formation pitch + strategy) BUILT & accepted (S41). Chessboard model COMPLETE — items 1–8 all DONE & validated.
 Item 8 step **E (bivariate Poisson → scoreline)** built + validated S38: a full
 team-vs-team matchup now runs end to end (adjusted attrs → occupancy boards → zone
@@ -15,6 +18,61 @@ battles → aggregated index → VOLUME → bivariate-Poisson scoreline). Accept
 band). `λ₃=0` LOCKED; `VOLUME=199.4` promoted to `zone_battle.json`. DB unchanged at
 **41 tables** (read-only orchestration; no DDL). **Next agenda: dashboard visual design**
 (+ full-tournament sim). Design doc: `docs/item8_aggregation.md`.
+
+## S46 — dashboard V3 horizontal pitch rework + battle overlay (Cowork, shell-relay)
+
+Long visual-iteration Cowork session (shell-relay: assistant wrote files, Indraneel
+ran streamlit + pasted screenshots). **No model or DB change — all `dashboard/app.py`
+view logic.** Design + live revisions captured in `docs/dashboard_v3_design.md` §6.
+Closed step 1a/1b + step 2 (battle overlay); step 1c (3-tab panel) + step 3 (zone
+strengths) carried to S47.
+
+### What changed (`dashboard/app.py`)
+- **Orientation vertical → horizontal** (unified): `_vmap`/`_pitch_lines` re-derived
+  (band→x length, lane→y width), heatmap `z` transposed, height ~460, pitch
+  full-width on top + panel below. Sidebar labels → "attacks →/←".
+- **Two teams on one shared frame** (A→L-to-R, B→R-to-L, B mirrored). **5 toggles**:
+  Team A · Team B · Heatmap · Zones (dotted 6×5 grid) · Battle overlay.
+- **Selection: pitch-click DROPPED → reliable "Highlight player" dropdown.** Native
+  Streamlit Plotly selection misrouted (positional `curve_number`s shift on toggle;
+  heatmaps emit no click points). Click-to-select **deferred to the web-app port**.
+  Removed `sel_map`/`_selected_slot`/`_add_catcher`/Clear.
+- **Appearance ⚙️ sliders:** pitch colour, Team A/B token colours, heat opacity, heat
+  contrast (gamma), dim-non-selected. **Warm/cool multi-stop gradients** (gentle
+  near-linear ramp — the first was too sharp, crushing low/mid occupancy).
+- **Surface = one team at a time** (the 'Show team' side) so the two don't wash each
+  other out; a selected player's kernel overrides in their team scheme (fixed the bug
+  where an ENG player showed ARG's red grid).
+- **Battle overlay (step 2):** A-attack (warm) vs B-defence (cool) on the shared
+  frame, **per-team phase for BOTH surfaces and token placement** (they converge in
+  the contested zone; bypasses the possession blend — fixes both-teams-possession
+  unrealism). **Swap** toggle flips to B-attack vs A-defence.
+
+### Occupancy kernel audit (Indraneel suspected a calc bug) — NOT a bug
+Dumped real grids (ESP/GER, possession-blended): **per-slot blended-sums uniform
+~1.0** (no domination), team grids smooth (own-goal band ~0.1 → midfield/attack peak
+~0.76). The "blob" / "central-only" / "Kane invisible in team mode" are all
+consequences of summing 11 broad kernels + overlap layering + own-max norm, not a
+calc error. **Banked model notes (NOT done):** GER wing-lane totals ~0.71 vs ~2.9
+central (more central than ESP ~1.3/2.6) — possible base-kernel centrality, low
+priority; **duplicate Lautaro Martínez (LW & ST) in ARG XI** — an
+`autopick_xi`/assignment bug to investigate.
+
+### Files (S46, committed at session end)
+- Modified: `dashboard/app.py` (the whole pitch rework), `docs/dashboard_v3_design.md`
+  (§6 design + 6.7–6.10 live revisions), `docs/session_state.md`.
+- **No DDL, no model/DB change** — 43 tables unchanged; `db_schema.md` unchanged.
+
+### S47 openers
+1. **Step 1c — 3-tab info panel** (replaces V2 right column + strategy strip +
+   scoreline expander): Team Stats (2 per-team sub-tabs; **2-col**: left
+   formation+subs / right radar), Player Stats (**2-col**: left EA+empirical/coverage
+   / right 5-attr multiselect), Probability matrix. Specs in design §6.5/§6.7.
+2. **Step 3 — zone strengths** (V3 step 6): top/bottom contested zones by
+   Σ(occupancy×rating); §3 model investigation first. Natural pair with battle view.
+3. **Indraneel's "few changes" to the battle view** — TBD, to be specified.
+4. Banked model bugs: duplicate L.Martínez in XI; wing-lane centrality; multi-player
+   kernel select (web-app era).
 
 ## S45 — dashboard V3 + ratings-audit page + Understat empirical relink
 

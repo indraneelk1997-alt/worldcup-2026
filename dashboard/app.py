@@ -75,21 +75,25 @@ def get_blend():
 # --- vertical pitch rendering ----------------------------------------------- #
 # Portrait pitch: width = PITCH_WID (x, 80), length = PITCH_LEN (y, 120).
 def _vmap(band: float, lane: float, up: bool) -> tuple[float, float]:
-    """(band, lane) -> screen (x, y) for a vertical pitch. `up`=team attacks up
-    (home at bottom); else attacks down (home at top) with L/R mirrored so each
-    player's own left/right stays correct."""
+    """(band, lane) -> screen (x, y) for a HORIZONTAL pitch (S46). Length
+    (PITCH_LEN) is the horizontal x-axis, width (PITCH_WID) the vertical y-axis.
+    `up`=team attacks left->right (own goal at the left); else right->left (own
+    goal at the right) with the flank axis mirrored too, so Team B is a 180°
+    rotation of Team A on the shared frame and each player's own L/R stays
+    correct. Lane 0 (left flank) -> top for the L->R team."""
     W, L = api.PITCH_WID, api.PITCH_LEN
     if up:
-        x = (lane + 0.5) / api.N_LANES * W
-        y = (band + 0.5) / api.N_BANDS * L
+        x = (band + 0.5) / api.N_BANDS * L
+        y = W - (lane + 0.5) / api.N_LANES * W
     else:
-        x = (api.N_LANES - lane - 0.5) / api.N_LANES * W
-        y = L - (band + 0.5) / api.N_BANDS * L
+        x = L - (band + 0.5) / api.N_BANDS * L
+        y = (lane + 0.5) / api.N_LANES * W
     return x, y
 
 
-def _pitch_lines_v():
-    """None-separated polyline for vertical pitch markings."""
+def _pitch_lines():
+    """None-separated polyline for HORIZONTAL pitch markings (S46). L = length
+    on the x-axis, W = width on the y-axis."""
     W, L = api.PITCH_WID, api.PITCH_LEN
     xs: list = []
     ys: list = []
@@ -98,15 +102,15 @@ def _pitch_lines_v():
         xs.extend([x0, x1, x1, x0, x0, None])
         ys.extend([y0, y0, y1, y1, y0, None])
 
-    rect(0, 0, W, L)                                   # outline
-    xs.extend([0, W, None]); ys.extend([L / 2, L / 2, None])   # halfway line
+    rect(0, 0, L, W)                                   # outline
+    xs.extend([L / 2, L / 2, None]); ys.extend([0, W, None])   # halfway line
     th = np.linspace(0, 2 * np.pi, 50)                 # centre circle
-    xs.extend(list(W / 2 + 10 * np.cos(th)) + [None])
-    ys.extend(list(L / 2 + 10 * np.sin(th)) + [None])
-    rect(W / 2 - 22, 0, W / 2 + 22, 18)                # penalty boxes
-    rect(W / 2 - 22, L - 18, W / 2 + 22, L)
-    rect(W / 2 - 10, 0, W / 2 + 10, 6)                 # six-yard boxes
-    rect(W / 2 - 10, L - 6, W / 2 + 10, L)
+    xs.extend(list(L / 2 + 10 * np.cos(th)) + [None])
+    ys.extend(list(W / 2 + 10 * np.sin(th)) + [None])
+    rect(0, W / 2 - 22, 18, W / 2 + 22)                # penalty boxes (L / R)
+    rect(L - 18, W / 2 - 22, L, W / 2 + 22)
+    rect(0, W / 2 - 10, 6, W / 2 + 10)                 # six-yard boxes (L / R)
+    rect(L - 6, W / 2 - 10, L, W / 2 + 10)
     return xs, ys
 
 
@@ -115,80 +119,171 @@ def _token_label(t: dict) -> str:
     return f"{sn} {t['ovr']}" if t.get("ovr") else sn
 
 
-def draw_pitch(team: dict, view: str, up: bool, title: str,
-               layout: list[dict] | None = None, sel_slot=None,
-               kernel_grid=None) -> go.Figure:
-    W, L = api.PITCH_WID, api.PITCH_LEN
-    if layout is None:
-        layout = api.pitch_layout(team, view)
-    # backdrop = the selected player's kernel when one is supplied, else the team
-    hm = kernel_grid if kernel_grid is not None else api.team_heatmap(team, view)
-    x_centers = [_vmap(0, l, up)[0] for l in range(api.N_LANES)]
-    y_centers = [_vmap(b, 0, up)[1] for b in range(api.N_BANDS)]
+def _hex_to_rgb(h: str) -> tuple[int, int, int]:
+    h = h.lstrip("#")
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))  # type: ignore[return-value]
 
-    fig = go.Figure()
-    # 1. occupancy heatmap (z[band, lane]; x=lane centres, y=band centres oriented)
+
+def _rgba(rgb: tuple[int, int, int], a: float) -> str:
+    return f"rgba({rgb[0]},{rgb[1]},{rgb[2]},{a})"
+
+
+# Surface gradients (S46, gentler ramp): a near-linear alpha climb with extra
+# low/mid stops so 0.1-0.5-of-max occupancy stays distinguishable (the first ramp
+# crushed everything below the peak into near-transparency). warm = Team A, cool =
+# Team B; each stop's base alpha is scaled by the heat-opacity slider.
+_WARM = [(0.00, (245, 255, 235), 0.00), (0.10, (255, 240, 170), 0.20),
+         (0.22, (255, 214, 110), 0.32), (0.36, (253, 184, 80), 0.44),
+         (0.52, (250, 150, 60), 0.56), (0.70, (242, 108, 45), 0.68),
+         (0.86, (228, 66, 38), 0.80), (1.00, (200, 34, 30), 0.90)]
+_COOL = [(0.00, (235, 245, 255), 0.00), (0.10, (200, 228, 252), 0.20),
+         (0.22, (150, 200, 245), 0.32), (0.36, (105, 170, 235), 0.44),
+         (0.52, (66, 135, 220), 0.56), (0.70, (45, 95, 205), 0.68),
+         (0.86, (35, 60, 175), 0.80), (1.00, (22, 30, 120), 0.90)]
+
+
+def _colorscale(scheme: str, alpha: float):
+    stops = _WARM if scheme == "warm" else _COOL
+    return [[p, f"rgba({r},{g},{b},{ba * alpha:.3f})"] for p, (r, g, b), ba in stops]
+
+
+def _add_surface(fig, team, view, up, scheme, alpha, gamma, kernel_slot=None) -> None:
+    """One team's occupancy surface, own-max normalised + gamma-shaped (contrast),
+    drawn with a long warm/cool gradient. A selected player shows their kernel."""
+    grid = (api.player_kernel(team, kernel_slot, view)
+            if kernel_slot is not None else None)
+    if grid is None:
+        grid = api.team_heatmap(team, view)
+    zmax = float(grid.max()) or 1.0
+    z = (grid / zmax) ** gamma                        # contrast control
+    xs = [_vmap(b, 0, up)[0] for b in range(api.N_BANDS)]
+    ys = [_vmap(0, l, up)[1] for l in range(api.N_LANES)]
     fig.add_trace(go.Heatmap(
-        x=x_centers, y=y_centers, z=hm, zmin=0.0, zsmooth="best", showscale=False,
-        hoverinfo="skip",
-        colorscale=[[0.0, "rgba(255,255,255,0)"], [0.25, "rgba(255,237,160,0.45)"],
-                    [0.55, "rgba(254,178,76,0.70)"], [1.0, "rgba(240,59,32,0.85)"]]))
-    # 2. markings
-    lx, ly = _pitch_lines_v()
-    fig.add_trace(go.Scatter(x=lx, y=ly, mode="lines",
-                             line=dict(color="white", width=2), hoverinfo="skip"))
-    # 3. tokens (single trace so a click's point index maps 1:1 to layout).
-    # Selection highlight: the picked token grows + thick-outlines, the rest fade
-    # (per-point opacity/size/colour arrays — no trace split). V3 step 3.
+        x=xs, y=ys, z=z.T, zmin=0.0, zmax=1.0, zsmooth="best",
+        showscale=False, hoverinfo="skip", colorscale=_colorscale(scheme, alpha)))
+
+
+def _add_tokens(fig, layout, up, sel_slot, edge_rgb, global_sel,
+                base_alpha, fade_alpha) -> int:
+    """One team's token trace (markers + code) + a surname/ovr label trace. Returns
+    the selectable marker trace's curve index. Team identity = marker EDGE colour;
+    group = fill. Fade lives in the colour ALPHA (not marker.opacity) and the trace
+    disables Plotly's own selection dimming, so there's ONE clean fade level —
+    selected token full + enlarged, all others (both teams) dimmed to fade_alpha."""
     pts = [_vmap(t["band"], t["lane"], up) for t in layout]
     is_sel = [t["slot_no"] == sel_slot for t in layout]
-    faded = [(sel_slot is not None) and not s for s in is_sel]
-    m_size = [30 if s else 22 if f else 24 for s, f in zip(is_sel, faded)]
-    m_op = [0.30 if f else 1.0 for f in faded]
-    m_lw = [4 if s else 2 for s in is_sel]
-    ink = [FADE_INK if f else INK for f in faded]
+
+    def a_for(s):
+        return 1.0 if s else (fade_alpha if global_sel else base_alpha)
+
+    fills = [_rgba(_hex_to_rgb(FILL[t["group"]]), a_for(s))
+             for t, s in zip(layout, is_sel)]
+    edges = [_rgba(edge_rgb, a_for(s)) for s in is_sel]
+    m_size = [32 if s else 24 for s in is_sel]
+    m_lw = [5 if s else 2 for s in is_sel]
+    ink = [INK if (s or not global_sel) else FADE_INK for s in is_sel]
     fig.add_trace(go.Scatter(
         x=[p[0] for p in pts], y=[p[1] for p in pts], mode="markers+text",
-        marker=dict(size=m_size, opacity=m_op,
-                    color=[FILL[t["group"]] for t in layout],
-                    line=dict(width=m_lw, color=[EDGE[t["group"]] for t in layout])),
+        marker=dict(size=m_size, color=fills, line=dict(width=m_lw, color=edges)),
+        unselected=dict(marker=dict(opacity=1.0)),    # we own the fade (colour alpha)
         text=[t["position_code"] for t in layout], textposition="middle center",
         textfont=dict(size=9, color=ink),
         customdata=[[t.get("name") or "", t["position_code"], t.get("ovr") or 0]
                     for t in layout],
         hovertemplate="<b>%{customdata[0]}</b> · %{customdata[1]} · "
                       "EA %{customdata[2]}<extra></extra>"))
-    # 4. surname + EA ovr below each token (lower y = visually below)
+    curve = len(fig.data) - 1
     fig.add_trace(go.Scatter(
         x=[p[0] for p in pts], y=[p[1] - 4.5 for p in pts], mode="text",
         text=[_token_label(t) for t in layout], textposition="middle center",
-        textfont=dict(size=9, color=ink), hoverinfo="skip"))
-
-    fig.update_xaxes(visible=False, range=[-6, W + 6])
-    fig.update_yaxes(visible=False, range=[-6, L + 6], scaleanchor="x", scaleratio=1)
-    fig.update_layout(
-        plot_bgcolor=PITCH, paper_bgcolor="rgba(0,0,0,0)",
-        margin=dict(l=6, r=6, t=8, b=6), height=560, showlegend=False)
-    return fig
+        textfont=dict(size=8, color=ink), hoverinfo="skip"))
+    return curve
 
 
-def _selected_slot(ev, layout: list[dict]):
-    """Map a Streamlit plotly selection event (or the persisted widget state, same
-    shape) to a slot_no. Tokens/labels are the last two traces; heatmap (curve 0)
-    and pitch lines (curve 1) aren't players, so skip them. -> slot_no or None."""
-    if not ev:
-        return None
-    try:
-        pts = ev["selection"]["points"]
-    except (KeyError, TypeError):
-        return None
-    for p in pts or []:
-        if p.get("curve_number") in (0, 1):          # heatmap / pitch markings
+def _zone_lines():
+    """Dotted polyline at the 6-band / 5-lane zone boundaries (our zone grid)."""
+    W, L = api.PITCH_WID, api.PITCH_LEN
+    xs: list = []
+    ys: list = []
+    for b in range(1, api.N_BANDS):              # band boundaries -> vertical lines
+        x = b / api.N_BANDS * L
+        xs.extend([x, x, None]); ys.extend([0, W, None])
+    for l in range(1, api.N_LANES):              # lane boundaries -> horizontal lines
+        y = l / api.N_LANES * W
+        xs.extend([0, L, None]); ys.extend([y, y, None])
+    return xs, ys
+
+
+# RGB defaults for the two team surfaces (match RADAR_A / RADAR_B).
+_RGB_A, _RGB_B = (220, 38, 38), (37, 99, 235)
+
+
+def draw_pitch(team_a, team_b, view, *, side_a, side_b, show_a, show_b, show_heat,
+               show_zones, battle=False, battle_swap=False, surface_side=None,
+               sel_side=None, sel_slot=None, pitch_color=PITCH,
+               rgb_a=_RGB_A, rgb_b=_RGB_B, surf_alpha=0.55, surf_gamma=1.0,
+               base_alpha=0.9, fade_alpha=0.25):
+    """Horizontal two-team pitch (S46). A attacks L->R, B R->L. Surfaces use warm
+    (A) / cool (B) gradients; with a player selected, only THAT player's kernel is
+    drawn (their team's scheme). Highlight is driven by (sel_side, sel_slot) from
+    the picker — no fragile pitch-click. Returns the figure."""
+    W, L = api.PITCH_WID, api.PITCH_LEN
+    has_sel = sel_side is not None and sel_slot is not None
+    surface_side = surface_side or side_a
+    # In battle mode each team uses its own battle PHASE (A attacks, B defends, or
+    # swapped) for BOTH its surface and its token placement — so they converge in
+    # the contested zone instead of both sitting in the same phase. Otherwise both
+    # use the sidebar `view` (the possession blend etc.).
+    va = ("defense" if battle_swap else "attack") if battle else view
+    vb = ("attack" if battle_swap else "defense") if battle else view
+    fig = go.Figure()
+
+    # 1. surface (under everything). Priority: selected player's kernel >
+    #    battle overlay (A-attack warm vs B-defense cool, mirrored) > one team's
+    #    occupancy (the 'Show team' side). Both teams' TOKENS always show.
+    if show_heat:
+        if has_sel:
+            if sel_side == side_a and show_a:
+                _add_surface(fig, team_a, va, True, "warm", surf_alpha, surf_gamma, sel_slot)
+            elif sel_side == side_b and show_b:
+                _add_surface(fig, team_b, vb, False, "cool", surf_alpha, surf_gamma, sel_slot)
+        elif battle:
+            if show_a:
+                _add_surface(fig, team_a, va, True, "warm", surf_alpha, surf_gamma)
+            if show_b:
+                _add_surface(fig, team_b, vb, False, "cool", surf_alpha, surf_gamma)
+        elif surface_side == side_a and show_a:
+            _add_surface(fig, team_a, va, True, "warm", surf_alpha, surf_gamma)
+        elif surface_side == side_b and show_b:
+            _add_surface(fig, team_b, vb, False, "cool", surf_alpha, surf_gamma)
+
+    # 2. pitch markings
+    lx, ly = _pitch_lines()
+    fig.add_trace(go.Scatter(x=lx, y=ly, mode="lines",
+                             line=dict(color="white", width=2), hoverinfo="skip"))
+
+    # 3. zone grid (dotted) — uniform 6 (length) x 5 (width) model grid
+    if show_zones:
+        zx, zy = _zone_lines()
+        fig.add_trace(go.Scatter(
+            x=zx, y=zy, mode="lines", hoverinfo="skip",
+            line=dict(color="rgba(255,255,255,0.5)", width=1, dash="dot")))
+
+    # 4. tokens per shown team (each at its own battle phase va/vb so the two
+    #    teams aren't both in the same phase)
+    for team, up, side, edge, tview in ((team_a, True, side_a, rgb_a, va),
+                                        (team_b, False, side_b, rgb_b, vb)):
+        if not (show_a if side == side_a else show_b):
             continue
-        idx = p.get("point_index", p.get("point_number"))
-        if isinstance(idx, int) and 0 <= idx < len(layout):
-            return layout[idx]["slot_no"]
-    return None
+        layout = api.pitch_layout(team, tview)
+        _add_tokens(fig, layout, up, sel_slot if sel_side == side else None, edge,
+                    has_sel, base_alpha, fade_alpha)
+
+    fig.update_xaxes(visible=False, range=[-6, L + 6])
+    fig.update_yaxes(visible=False, range=[-6, W + 6], scaleanchor="x", scaleratio=1)
+    fig.update_layout(plot_bgcolor=pitch_color, paper_bgcolor="rgba(0,0,0,0)",
+                      margin=dict(l=6, r=6, t=8, b=6), height=460, showlegend=False)
+    return fig
 
 
 # --- scoreline matrix (blue heatmap, matplotlib-free) ----------------------- #
@@ -575,9 +670,9 @@ def main():
 
     with st.sidebar:
         st.header("Match")
-        a = st.selectbox("Team A (home, attacks up)", nations, format_func=lbl,
+        a = st.selectbox("Team A (home, attacks →)", nations, format_func=lbl,
                          index=nations.index("ESP") if "ESP" in nations else 0)
-        b = st.selectbox("Team B (away, attacks down)", nations, format_func=lbl,
+        b = st.selectbox("Team B (away, attacks ←)", nations, format_func=lbl,
                          index=nations.index("ENG") if "ENG" in nations else min(1, len(nations) - 1))
         st.divider()
         st.header("Pitch")
@@ -617,52 +712,84 @@ def main():
     is_a = side == a
     team = r["team_a"] if is_a else r["team_b"]
     auto_fmt = auto_a if is_a else auto_b
-    layout = api.pitch_layout(team, view)
-    pkey = f"pitch_sel_{side}"          # the plotly widget's own selection state
-    selkey = f"sel_slot_{side}"         # OUR derived selection (drives the highlight)
+    layout_a = api.pitch_layout(r["team_a"], view)
+    layout_b = api.pitch_layout(r["team_b"], view)
 
-    # Highlight is driven by our own session key, not the widget's transient
-    # selection: redrawing the figure can drop Plotly's selection, so reading it
-    # back would flicker. We update our key only on a real (non-empty) click and
-    # force one rerun; an empty event (e.g. a redraw reset) is ignored, so there's
-    # no oscillation. Clearing is an explicit button.
-    sel_slot = st.session_state.get(selkey)
-    if sel_slot is not None and not any(t["slot_no"] == sel_slot for t in layout):
-        sel_slot = None                 # stale after a formation/side change
-    sel_tok = next((t for t in layout if t["slot_no"] == sel_slot), None)
-    # when a player is selected, the pitch backdrop becomes their kernel
-    kernel = api.player_kernel(team, sel_slot, view) if sel_slot is not None else None
+    # S46 step 1b: both teams on one horizontal frame, controlled by toggles.
+    tg = st.columns(5)
+    show_a = tg[0].toggle(lbl(a), value=True, key="tg_show_a")
+    show_b = tg[1].toggle(lbl(b), value=True, key="tg_show_b")
+    show_heat = tg[2].toggle("Heatmap", value=True, key="tg_heat")
+    show_zones = tg[3].toggle("Zones", value=True, key="tg_zones")
+    battle = tg[4].toggle("Battle overlay", value=False, key="tg_battle",
+                          help="Show A's attack vs B's defence on one frame "
+                               "(overlap = contested zones) instead of one team.")
+    battle_swap = False
+    if battle:
+        battle_swap = st.toggle(
+            f"Swap battle: {lbl(b)} attack vs {lbl(a)} defence", value=False,
+            key="tg_bswap")
 
-    pcol, icol = st.columns([0.46, 0.54])
-    with pcol:
-        event = st.plotly_chart(
-            draw_pitch(team, view, up=is_a, layout=layout, sel_slot=sel_slot,
-                       kernel_grid=kernel,
-                       title=f"{lbl(side)} — {team['formation']}"),
-            use_container_width=True, key=pkey,
-            on_select="rerun", selection_mode="points")
-        clicked = _selected_slot(event, layout)
-        if clicked is not None and clicked != sel_slot:
-            st.session_state[selkey] = clicked
-            st.rerun()
-        cap, btn = st.columns([0.72, 0.28])
-        if kernel is not None:
-            cap.caption(f"Backdrop: {sel_tok['name']}'s {VIEW_LABELS[view].lower()} "
-                        "kernel — click another player or Clear for the team view.")
-        else:
-            cap.caption("Click a player to highlight them and load their profile.")
-        if sel_slot is not None and btn.button("Clear", key=f"clr_{side}",
-                                               use_container_width=True):
-            st.session_state[selkey] = None
-            st.rerun()
-    srid = team.get("sid", {}).get(sel_slot) if sel_slot is not None else None
+    # Highlight a player via a RELIABLE picker (replaces the fragile pitch-click
+    # selection — Streamlit's native Plotly selection misroutes when toggles shift
+    # trace order; click-to-select is deferred to the web-app port). Drives the
+    # token highlight + kernel backdrop + the Player tab.
+    hl_opts = [("", None, "— none —")]
+    for sd, lay in ((a, layout_a), (b, layout_b)):
+        for t in lay:
+            nm = t.get("name") or t["position_code"]
+            hl_opts.append((sd, t["slot_no"], f"{lbl(sd)} · {nm} ({t['position_code']})"))
+    pick = st.selectbox("Highlight player", hl_opts, format_func=lambda o: o[2],
+                        key="hl_pick")
+    sel_side, sel_slot = (pick[0] or None), pick[1]
+
+    with st.expander("⚙️ Pitch appearance"):
+        ac = st.columns(5)
+        pitch_color = ac[0].color_picker("Pitch", PITCH, key="ap_pitch")
+        col_a = ac[1].color_picker("Team A tokens", RADAR_A, key="ap_a")
+        col_b = ac[2].color_picker("Team B tokens", RADAR_B, key="ap_b")
+        surf_alpha = ac[3].slider("Heat opacity", 0.0, 0.9, 0.55, 0.05, key="ap_alpha")
+        surf_gamma = ac[4].slider(
+            "Heat contrast", 0.3, 2.5, 1.0, 0.1, key="ap_gamma",
+            help="Higher = sharper peaks (suppresses the low-occupancy wash).")
+        fade_alpha = st.slider("Dim non-selected players", 0.05, 1.0, 0.25, 0.05,
+                               key="ap_fade")
+        st.caption("Surfaces use fixed warm (Team A) / cool (Team B) gradients for "
+                   "readability; the colour pickers tint the player tokens.")
+    rgb_a, rgb_b = _hex_to_rgb(col_a), _hex_to_rgb(col_b)
+
+    fig = draw_pitch(
+        r["team_a"], r["team_b"], view, side_a=a, side_b=b, surface_side=side,
+        show_a=show_a, show_b=show_b, show_heat=show_heat, show_zones=show_zones,
+        battle=battle, battle_swap=battle_swap,
+        sel_side=sel_side, sel_slot=sel_slot,
+        pitch_color=pitch_color, rgb_a=rgb_a, rgb_b=rgb_b,
+        surf_alpha=surf_alpha, surf_gamma=surf_gamma, fade_alpha=fade_alpha)
+    st.plotly_chart(fig, use_container_width=True, key="pitch")
+    if battle:
+        atk, dfn = (lbl(b), lbl(a)) if battle_swap else (lbl(a), lbl(b))
+        st.caption(f"**Battle overlay** — {atk}'s attack (warm) vs {dfn}'s defence "
+                   "(cool) on the shared frame; overlap = the contested zones.")
+    else:
+        st.caption(f"Heatmap = **{lbl(side)}**'s occupancy (the 'Show team' side); "
+                   "both teams' tokens are shown. A selected player's kernel "
+                   "replaces it.")
+
+    # selected player's profile, from whichever team owns the selection
+    sel_layout = (layout_a if sel_side == a else layout_b if sel_side == b else None)
+    sel_tok = (next((t for t in sel_layout if t["slot_no"] == sel_slot), None)
+               if sel_layout else None)
+    sel_team = (r["team_a"] if sel_side == a else r["team_b"] if sel_side == b
+                else None)
+    srid = (sel_team.get("sid", {}).get(sel_slot)
+            if sel_team is not None and sel_slot is not None else None)
     profile = (api.player_profile(con, srid, sel_tok.get("ea_id"))
                if sel_tok is not None else None)
-    with icol:
-        render_panel(con, team, view, lbl(side), side, fmts, auto_fmt, P,
-                     r["team_a"], r["team_b"], lbl(a), lbl(b), sel_tok, profile)
 
-    # full-width strategy strip — uses the whole screen, not a narrow column
+    # info panel still follows the sidebar "Show team" (3-tab restructure = 1c).
+    render_panel(con, team, view, lbl(side), side, fmts, auto_fmt, P,
+                 r["team_a"], r["team_b"], lbl(a), lbl(b), sel_tok, profile)
+
     render_strategy(team, lbl(side))
 
     with st.expander("Scoreline probability matrix", expanded=True):
