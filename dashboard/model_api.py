@@ -52,7 +52,8 @@ if "WC2026_DB" not in os.environ:
 from src.load.v2_ingest.zone_aggregate import (          # noqa: E402
     _scoreline_setup, autopick_xi, load_gk_score, SLOT_GROUP,
     _lambda_pair, bivariate_poisson_matrix, _matrix_summary,
-    best_formation, slot_alternatives,
+    best_formation, slot_alternatives, zone_strengths as _zone_strengths,
+    zone_strengths_boards as _zone_strengths_boards,
 )
 from src.load.v2_ingest.formation_assembly import assemble, team_boards  # noqa: E402
 from src.load.v2_ingest.kernel_transforms import (       # noqa: E402
@@ -346,6 +347,28 @@ def strategy_notes(team: dict) -> dict:
 
 
 # --------------------------------------------------------------------------- #
+# Zone strengths (Team Stats tab, V3 step 6 -- docs/dashboard_v3_design.md §7).
+# Team-INTRINSIC per-zone capability (Sum occ * zone-attribute rating), distinct
+# from the matchup threat index. Sits BESIDE strategy_notes (different lens).
+# --------------------------------------------------------------------------- #
+def zone_strengths(con, nation: str, P: dict, formation: str = DEFAULT_FORMATION,
+                   n_extreme: int = 3) -> dict | None:
+    """30-cell attack & defence strength maps for one team (raw mean rating per
+    zone; display min-max stretches), plus the top/bottom `n_extreme` zones of
+    each. AUTO-XI variant (CLI / non-interactive). None if not assemblable."""
+    return _zone_strengths(con, nation, formation, P["scores"], n_extreme)
+
+
+def zone_strengths_for_team(con, team: dict, n_extreme: int = 3) -> dict:
+    """Zone strengths from an ALREADY-ASSEMBLED team (assemble_team output) so the
+    surface reflects the EXACT XI on the pitch — including player swaps — and stays
+    consistent with the tokens. Live (the XI override changes per interaction; a
+    single board sweep is cheap, like matchup)."""
+    out = _zone_strengths_boards(con, team["boards"], team["sid"], n_extreme)
+    return {"nation": team["nation"], "formation": team["formation"], **out}
+
+
+# --------------------------------------------------------------------------- #
 # Squad coverage (reads player_coverage_index; docs/player_coverage_index.md).
 # Read-only display data for the "Squad coverage" page + future profile visuals.
 # --------------------------------------------------------------------------- #
@@ -596,6 +619,26 @@ def _coverage_probe(nation: str = "BRA") -> None:
               f"{('Y' if r['has_adjusted'] else '-'):>3}  {r['player_name']}")
 
 
+def _zones_probe(nation: str = "ESP") -> None:
+    """Adapter-side zone-strengths check: proves the model_api pass-through agrees
+    with `zone_aggregate.py --zone-strengths NAT` (same machinery, repackaged)."""
+    con, P = setup()
+    try:
+        zs = zone_strengths(con, nation, P)
+    finally:
+        con.close()
+    if not zs:
+        raise SystemExit(f"could not assemble {nation}")
+    print(f"{nation} {zs['formation']} zone strengths (0-100, max-zone per profile)\n")
+    for prof in ("attack", "defence"):
+        print(f"  {prof} strongest: " + "   ".join(
+            f"B{r['band']}·L{r['lane']} {r['key']}={r['score']:.0f}(occ{r['occ']:.2f})"
+            for r in zs[f"{prof}_top"]))
+        print(f"  {prof} weakest:   " + "   ".join(
+            f"B{r['band']}·L{r['lane']} {r['key']}={r['score']:.0f}(occ{r['occ']:.2f})"
+            for r in zs[f"{prof}_bottom"]))
+
+
 if __name__ == "__main__":
     a = sys.argv[1:]
     if a and a[0] == "--pitch":
@@ -603,5 +646,7 @@ if __name__ == "__main__":
                      a[2] if len(a) > 2 else "possession")
     elif a and a[0] == "--coverage":
         _coverage_probe(a[1] if len(a) > 1 else "BRA")
+    elif a and a[0] == "--zones":
+        _zones_probe(a[1] if len(a) > 1 else "ESP")
     else:
         _selftest(*(a[:2] if len(a) >= 2 else ()))

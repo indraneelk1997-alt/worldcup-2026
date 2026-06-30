@@ -296,3 +296,107 @@ click/clear work). Feedback folded into later steps:
   dotted lines are faithful. Indraneel expected non-uniform lanes — OPEN: confirm
   the intended zone scheme (uniform vs thirds + channels). If non-uniform, that's a
   model-definition change, not a line-drawing fix.
+
+## 7. Step 6 — zone strengths + zone battle inspector (RESOLVED S47)
+
+Resolves the §3 open questions. Agreed with Indraneel S47 before code. **Read-only:
+no model logic, no DB/DDL change** — both pieces are aggregations over existing
+`zone_aggregate.py` / `zone_battle.py` functions.
+
+### 7.1 The metric is team-intrinsic, NOT the threat index (§3 Q1/Q2 resolved)
+The threat/value index (`compute_attack_index`) weights each zone by **generic
+`zone_xT`** (league-average xG+progression) and a **two-team Bradley-Terry win-prob**
+— it answers "who wins this matchup." That is the wrong question for "where is *this*
+team strong." Zone strength is a **team-intrinsic** quantity: for each zone, how much
+the team's own *structure (occupancy) × personnel (zone-relevant attribute ratings)*
+favours it — independent of `zone_xT` and of the opponent.
+
+**Key finding (observed, zone_battle.py:104):** `_team_side_score` at **beta=1** is
+exactly
+```
+side = (Σ occ)^1 · [ Σ occ·q / Σ occ ] = Σ occ·q     # q = _side_score (zone attrs + family boost)
+```
+i.e. **Σ(occupancy × that player's rating on the zone's relevant attributes)** —
+Indraneel's metric, already implemented one-sided inside `resolve_stage`, using the
+**canonical zone→attribute mapping** in `zone_battle.json` (`att` weights for attack,
+`def` weights for defence). No parallel formula is invented (honours §3's "do not
+invent a second mapping").
+
+### 7.2 Definition (locked S47)
+For a team, for each of the 30 board cells `z` (`fold_zone(z)` → authored zone key +
+context, exactly as the threat path folds):
+
+- **Attack strength** uses the team's **attack** board roster at `z` and each duel's
+  `att` / `att_boost`; **defence strength** uses the team's **defence** board roster
+  at `z` and each duel's `def` / `def_boost`. (Occupancies are thus drawn from the
+  phase-appropriate board — confirmed requirement.)
+- Per stage, score = w-weighted mean of `_team_side_score(roster, duel-side-weights,
+  duel-side-boost, fmult, beta=1)` over that stage's duels (reusing `resolve_stage`'s
+  att/def side computation, one-sided — no BT, no opponent).
+- **Stage combine (convex, local to this metric):**
+  `strength(z) = 0.30·approach_stage + 0.70·main_stage`.
+  NB this **0.3/0.7 is specific to the strength metric and does NOT change the model's
+  `approach_gate = 0.5`** used by the threat path (§ resolve_context). Convex blend
+  (not the threat's `main·(gate+(1−gate)·approach)` product) keeps the result on the
+  rating scale and interpretable.
+- **Normalise:** scale so the team's strongest zone = **100**, **per team per
+  profile**. Attack and defence are ranked **independently** (a team's strongest
+  attack zone and strongest defence zone are each their own 100).
+- Strengths = top zones; weaknesses = bottom zones (per profile).
+
+**Orientation note to sanity-check live:** both boards are stored attack-oriented
+(+band toward the goal the team attacks). For the team-intrinsic defence map we read
+the team's own defence board at cell `z` directly (no `mirror_zone` — there is no
+opponent to align against). Expect deep-defence strength to concentrate in **low
+bands** (own-goal end); verify on first real output.
+
+### 7.3 Build sequence (one step at a time)
+- **6a — metric + adapter (next).** `zone_strengths(con, nation, formation)` in
+  `zone_aggregate.py`: assemble the team (`_assemble_team`), sweep 30 cells, return
+  `{attack: {z: 0–100}, defence: {z: 0–100}, attack_top/bottom, defence_top/bottom}`
+  with each `z` mapped to (band, lane, authored-zone label). `model_api` adapter +
+  `st.cache_data`; extend the CLI self-test. **Verify via CLI before any UI.**
+- **6b — display.** Top/bottom attack & defence zones in the Team Stats tab; form
+  (lists vs a 6×5 strength heatmap on the existing pitch surface) decided at 6b.
+- **6c — zone selection + battle inspector.** Zone selection via **dropdown** (or a
+  compact 6×5 button grid) — mirrors the S46 player-dropdown decision; **not
+  pitch-click** (deferred to the web-app port; curve-number misrouting, S46 §6.9).
+  On select, the info panel shows that zone's **battle**: our **win-probability**
+  (`resolve_context` threat, A-attack vs B-defence), the **approach + main** duels
+  with both sides' weighted attribute scores, and the **boost-giving
+  playstyles/attributes** (each side's players' `fams` matched to the duel's
+  `att_boost`/`def_boost`). `resolve_context` already returns the per-duel rows; it is
+  extended to also expose which boosts fired.
+
+### 7.4a S47 revision — beta=0 (occ-weighted MEAN rating), not occ×rating
+Live review showed the `beta=1` surface (`Σ occ·rating`) looked just like the
+occupancy heatmap. Quantified it (`--zones-diag`): Pearson r of the normalised
+`beta=1` surface vs raw occupancy over occupied zones = **ESP 0.996 (atk) / 0.932
+(def), ENG 0.997 / 0.984** — visually redundant. The `beta=0` occ-weighted **mean
+rating** ("how good are the players who operate here", volume divided out) is
+**r ≈ 0** vs occupancy (ESP −0.069 / −0.188, ENG 0.103 / 0.008) — orthogonal
+information the heatmap can't show. **Decision: production surface = beta=0.**
+Opponent-relative signal is deferred to the 6c battle inspector (not folded into
+the strength surface). Consequences:
+- **Occupancy floor now gates everything** (not just weaknesses): normalisation,
+  surface masking, and BOTH top/bottom lists rank only zones with occ ≥
+  `OCC_FLOOR_FRAC × max-occ`, so a stray high-rated player in a near-empty zone
+  can't top the list. Below-floor / empty → `None` (cold/masked).
+- **Display normalisation = min–max, decided live (S47).** Max-only washed out —
+  compressed mean ratings (~75–90) ÷ max → all ~0.8–1.0, and `zsmooth` spread the
+  warmth across the whole pitch. Fix: the model returns the **raw** per-zone mean
+  rating; the surface **min–max stretches** within the shown team (weakest
+  occupied → cold, strongest → hot), renders **discrete zone cells** (no
+  smoothing — it's a zonal metric), and masks unoccupied/below-floor zones as
+  **transparent grass** (`nan`, not cold fill). Lists show the **raw** rating so
+  they stay interpretable. Caveat: min–max amplifies small absolute differences —
+  it's a *relative* within-team read; the lists carry the absolute context.
+- **Surface lives on the pitch** as a "Zone strength" toggle (attack/defence
+  radio), mutually exclusive with the occupancy heatmap (draw_pitch precedence:
+  strength > player kernel > battle > occupancy). Panel keeps the textual
+  strongest/weakest lists only.
+
+### 7.4 §3 Q3 resolved
+Zone strengths **sit beside** `strategy_notes` (the 5-axis text), not replace it —
+different lenses (spatial/structural vs stylistic). Revisit only if the panel feels
+redundant once 6b lands.

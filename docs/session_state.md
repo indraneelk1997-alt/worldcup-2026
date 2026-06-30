@@ -3,13 +3,15 @@
 > **Fast-changing.** This is "where we are right now." Updated at the end
 > of each working session. For permanent facts/rules, see `Claude.md`.
 
-**Last updated:** end of S46 (2026-06-29) — dashboard V3 **horizontal pitch
-rework**: both teams on one shared frame, 5 pitch toggles (Team A/B · Heatmap ·
-Zones · Battle overlay), reliable Highlight-player dropdown (pitch-click deferred to
-the web-app port), appearance sliders + gentler warm/cool gradients, single-team
-surface + **battle overlay** (A-attack vs B-defence, per-team phase for surfaces AND
-tokens, swap). Occupancy kernel audited — **NOT buggy** (per-slot sums uniform ~1.0;
-the "blob" is sum-of-broad-kernels). No model/DB change.
+**Last updated:** end of S47 (2026-06-30) — dashboard V3 **step 6 zone strengths**:
+team-intrinsic per-zone capability (item-7 side-score over a zone roster with the
+zone's att/def weights; no opponent/zone_xT/BT; combine 0.3·approach+0.7·main).
+**Production beta=0 (occ-weighted MEAN rating)** after `--zones-diag` showed beta=1
+(Σocc·rating) ≈ occupancy (r 0.93–0.997) while beta=0 is orthogonal (r≈0). On-pitch
+"Zone strength" toggle (Attack/Defence), min-max-stretched discrete-cell surface
+mutually exclusive with the occupancy heatmap; team-tab strongest/weakest lists;
+computed LIVE from the shown XI (swap-consistent). **Swap-consistency bug fixed
+(PENDING live re-verify after a clean streamlit restart).** No model/DB change.
 **Current version line:** **S42: position-aware XI selection + best-fit formation BUILT & verified.** Item 9 (`docs/item9_xi_selection.md`). Replaced group-only `autopick_xi` with empirical, side-aware slotting off a new `squad_position_eligibility` table (modal/>20%-minutes rule across Understat+FBref+StatsBomb, EA + coarse-group fallbacks) and Hungarian assignment. Headline bugs dead (Cucurella→LB not RCB, Kane→ST). `best_formation` auto-picks the max-fit shape per squad (FRA/ARG→3-5-2, ENG→4-1-4-1…). **DB now 42 tables** (added `squad_position_eligibility`; first DDL since S35 — a derived rollup, no FK; `db_schema.md` regenerated). **Dashboard V2** (same session): info-panel formation dropdown (default auto best-fit) + player swap, both live-recomputing. Player-stats panel is the only V2 piece left. Dashboard V1 (vertical formation pitch + strategy) BUILT & accepted (S41). Chessboard model COMPLETE — items 1–8 all DONE & validated.
 Item 8 step **E (bivariate Poisson → scoreline)** built + validated S38: a full
 team-vs-team matchup now runs end to end (adjusted attrs → occupancy boards → zone
@@ -18,6 +20,67 @@ battles → aggregated index → VOLUME → bivariate-Poisson scoreline). Accept
 band). `λ₃=0` LOCKED; `VOLUME=199.4` promoted to `zone_battle.json`. DB unchanged at
 **41 tables** (read-only orchestration; no DDL). **Next agenda: dashboard visual design**
 (+ full-tournament sim). Design doc: `docs/item8_aggregation.md`.
+
+## S47 — dashboard V3 step 6: team-intrinsic ZONE STRENGTHS (Cowork, shell-relay)
+
+Built the zone-strengths view (dashboard step 6). Design + decisions in
+`docs/dashboard_v3_design.md` §7 (+§7.4a). **No DB/DDL change (43 tables); all
+read-only model + view code.** Shell-relay throughout (assistant wrote files,
+Indraneel ran CLI + streamlit, pasted output/screenshots).
+
+### Metric (decided + quantified)
+- Team-INTRINSIC per-zone capability, **distinct from the matchup threat index**:
+  reuses the item-7 `_team_side_score` one-sided over a zone's roster with the
+  zone's att/def attribute weights from `zone_battle.json` — no opponent, no
+  zone_xT, no Bradley-Terry. Stage combine **0.3·approach + 0.7·main** (local to
+  this metric; NOT the model's approach_gate=0.5).
+- **Production beta=0 (occ-weighted MEAN rating)**, not beta=1 (Σ occ·rating).
+  `--zones-diag` quantified it: r(occ×rating, occ) = ESP 0.996/0.932, ENG
+  0.997/0.984 (≈ the occupancy heatmap, redundant); r(mean-rating, occ) ≈ 0
+  (ESP −0.069/−0.188, ENG 0.103/0.008 — orthogonal, the view occupancy can't give).
+- Occupancy floor `OCC_FLOOR_FRAC = 0.15` gates which zones are ranked/shown.
+- Display: model returns RAW mean ratings (compressed ~75–90); the pitch surface
+  **min-max stretches** them, draws **discrete zone cells** (zsmooth off), masks
+  unoccupied/below-floor as **transparent grass**. Lists show raw ratings.
+
+### Built
+- `zone_aggregate.py`: `zone_strengths` (auto-XI wrapper) + **`zone_strengths_boards`**
+  (core, takes a pre-assembled team's boards+sid), `_one_sided_zone_score(…, beta)`,
+  `demo_zone_strengths` (`--zone-strengths NAT`), `diagnose_zone_metric`
+  (`--zones-diag NAT`).
+- `model_api.py`: `zone_strengths` (auto-XI, CLI), **`zone_strengths_for_team`**
+  (from the SHOWN team's boards → reflects swaps), `_zones_probe` (`--zones NAT`).
+- `app.py`: "Zone strength" pitch toggle + Attack/Defence radio; surface via
+  `_add_surface(grid_override=…)` (min-max 0–1, zsmooth off, nan=grass), **mutually
+  exclusive with the occupancy heatmap** (precedence strength > player kernel >
+  battle > occupancy); team-tab strongest/weakest lists; surface + lists computed
+  **LIVE from the shown team** (consistent with tokens).
+
+### Fixed this session
+- **Swap-consistency bug:** the surface/lists used the AUTO XI (ignored player
+  swaps and mismatched the tokens). Refactored to compute from the shown team's
+  boards via `zone_strengths_for_team`. **PENDING live re-verify** — last attempt
+  hit a Streamlit stale-import error (deep-import staleness, see openers).
+
+### S48 openers
+1. **Live-verify** the swap fix + the beta=0 min-max surface after a **clean
+   streamlit restart**. (Streamlit gotcha: it hot-reloads `app.py` + same-dir
+   modules but NOT `src/` modules already in `sys.modules`; adding a new symbol to
+   `zone_aggregate` needs a hard restart, else `ImportError: cannot import name`.)
+2. **Attacking-third / floor question (OPEN, not a calc bug):** the attack surface
+   is gated by attack-board OCCUPANCY, which for a possession side is heaviest in
+   build-up (own half/mid) and thin in the final third → the 0.15 floor masks the
+   attacking zones. Decide on data (`--zone-strengths ESP` shows per-zone occ):
+   lower the floor (~0.05), drop occupancy-masking for the attack surface, or accept.
+3. Then **6c** — zone selection (dropdown, per the S46 player-dropdown decision) +
+   battle inspector (`resolve_context` win-prob + approach/main attrs + boost-giving
+   playstyles; the opponent-relative signal lives here).
+4. Banked: duplicate Lautaro Martínez in ARG XI; web-app port for click-to-select.
+
+### Files (S47, uncommitted until the commit below)
+- Modified: `src/load/v2_ingest/zone_aggregate.py`, `dashboard/model_api.py`,
+  `dashboard/app.py`, `docs/dashboard_v3_design.md`, `docs/session_state.md`.
+- **No DDL / DB change** (43 tables; `db_schema.md` unchanged).
 
 ## S46 — dashboard V3 horizontal pitch rework + battle overlay (Cowork, shell-relay)
 

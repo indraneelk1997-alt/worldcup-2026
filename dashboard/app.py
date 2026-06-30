@@ -68,6 +68,10 @@ def get_blend():
     return api.blend_frame(con)
 
 
+# Zone strengths are computed live from the SHOWN team (api.zone_strengths_for_team)
+# so they reflect the exact XI on the pitch incl. player swaps — see main(). A
+# single board sweep is cheap, like matchup.
+
 # Matchup is computed live (not cached): it now depends on per-team formation +
 # XI overrides, and a single assemble+scoreline is cheap. setup stays cached.
 
@@ -147,19 +151,30 @@ def _colorscale(scheme: str, alpha: float):
     return [[p, f"rgba({r},{g},{b},{ba * alpha:.3f})"] for p, (r, g, b), ba in stops]
 
 
-def _add_surface(fig, team, view, up, scheme, alpha, gamma, kernel_slot=None) -> None:
-    """One team's occupancy surface, own-max normalised + gamma-shaped (contrast),
-    drawn with a long warm/cool gradient. A selected player shows their kernel."""
-    grid = (api.player_kernel(team, kernel_slot, view)
-            if kernel_slot is not None else None)
-    if grid is None:
-        grid = api.team_heatmap(team, view)
-    zmax = float(grid.max()) or 1.0
-    z = (grid / zmax) ** gamma                        # contrast control
+def _add_surface(fig, team, view, up, scheme, alpha, gamma, kernel_slot=None,
+                 grid_override=None) -> None:
+    """One team's surface, own-max normalised + gamma-shaped (contrast), drawn with
+    a long warm/cool gradient. `grid_override` (a 6×5 array, e.g. zone strengths)
+    bypasses occupancy; else a selected player shows their kernel, otherwise the
+    team's occupancy surface for `view`."""
+    if grid_override is not None:
+        # Already 0-1 (min-max stretched upstream); nan = unoccupied -> stays nan
+        # so the cell renders as transparent grass. Discrete cells (no smoothing)
+        # so it reads as a per-zone map, not a flow field.
+        z = np.power(grid_override, gamma)
+        smooth = False
+    else:
+        grid = (api.player_kernel(team, kernel_slot, view)
+                if kernel_slot is not None else None)
+        if grid is None:
+            grid = api.team_heatmap(team, view)
+        zmax = float(grid.max()) or 1.0
+        z = (grid / zmax) ** gamma                    # contrast control
+        smooth = "best"
     xs = [_vmap(b, 0, up)[0] for b in range(api.N_BANDS)]
     ys = [_vmap(0, l, up)[1] for l in range(api.N_LANES)]
     fig.add_trace(go.Heatmap(
-        x=xs, y=ys, z=z.T, zmin=0.0, zmax=1.0, zsmooth="best",
+        x=xs, y=ys, z=z.T, zmin=0.0, zmax=1.0, zsmooth=smooth,
         showscale=False, hoverinfo="skip", colorscale=_colorscale(scheme, alpha)))
 
 
@@ -222,7 +237,8 @@ def draw_pitch(team_a, team_b, view, *, side_a, side_b, show_a, show_b, show_hea
                show_zones, battle=False, battle_swap=False, surface_side=None,
                sel_side=None, sel_slot=None, pitch_color=PITCH,
                rgb_a=_RGB_A, rgb_b=_RGB_B, surf_alpha=0.55, surf_gamma=1.0,
-               base_alpha=0.9, fade_alpha=0.25):
+               base_alpha=0.9, fade_alpha=0.25,
+               strength_grid=None, strength_scheme="warm"):
     """Horizontal two-team pitch (S46). A attacks L->R, B R->L. Surfaces use warm
     (A) / cool (B) gradients; with a player selected, only THAT player's kernel is
     drawn (their team's scheme). Highlight is driven by (sel_side, sel_slot) from
@@ -238,10 +254,15 @@ def draw_pitch(team_a, team_b, view, *, side_a, side_b, show_a, show_b, show_hea
     vb = ("attack" if battle_swap else "defense") if battle else view
     fig = go.Figure()
 
-    # 1. surface (under everything). Priority: selected player's kernel >
-    #    battle overlay (A-attack warm vs B-defense cool, mirrored) > one team's
-    #    occupancy (the 'Show team' side). Both teams' TOKENS always show.
-    if show_heat:
+    # 1. surface (under everything). Priority: ZONE STRENGTH (the 'Show team'
+    #    side's attack/defence map — mutually exclusive with the occupancy heatmap,
+    #    so only one is ever active) > selected player's kernel > battle overlay
+    #    (A-attack warm vs B-defense cool, mirrored) > one team's occupancy.
+    #    Both teams' TOKENS always show.
+    if strength_grid is not None:
+        _add_surface(fig, None, None, surface_side == side_a, strength_scheme,
+                     surf_alpha, surf_gamma, grid_override=strength_grid)
+    elif show_heat:
         if has_sel:
             if sel_side == side_a and show_a:
                 _add_surface(fig, team_a, va, True, "warm", surf_alpha, surf_gamma, sel_slot)
@@ -489,10 +510,16 @@ def _render_player(tok: dict, prof: dict | None) -> None:
                    "else the raw EA rating.")
 
 
+def _zone_list(rows: list[dict]) -> str:
+    """One-line 'key (band) score' summary for a top/bottom zone list."""
+    return "  ·  ".join(f"{r['key']} (B{r['band']}) — {r['score']:.0f}" for r in rows)
+
+
 def render_panel(con, team: dict, view: str, name: str, nation: str,
                  fmts: list[str], auto_fmt: str, P: dict,
                  team_a: dict, team_b: dict, name_a: str, name_b: str,
-                 sel_tok: dict | None = None, profile: dict | None = None) -> None:
+                 sel_tok: dict | None = None, profile: dict | None = None,
+                 zs: dict | None = None) -> None:
     """Info panel, V3: a Team tab (formation knob + two-team playstyle radar +
     swaps) and a Player tab (populated by pitch selection — step 3/4)."""
     tab_team, tab_player = st.tabs(["Team", "Player"])
@@ -512,6 +539,23 @@ def render_panel(con, team: dict, view: str, name: str, nation: str,
         st.plotly_chart(radar_chart(team_a, team_b, name_a, name_b),
                         use_container_width=True)
         _render_swaps(con, team, nation, P)
+
+        st.divider()
+        st.caption("**Zone strengths** — mean adjusted rating of the players who "
+                   "occupy each zone (≈75–90; higher = stronger occupants). "
+                   "Team-intrinsic: no opponent, orthogonal to occupancy. Toggle "
+                   "the surface on the pitch (shading is min–max stretched).")
+        if not zs:
+            st.info("Zone strengths unavailable (squad could not be assembled).")
+        else:
+            zc1, zc2 = st.columns(2)
+            with zc1:
+                st.markdown("**Attack — strongest** · " + _zone_list(zs["attack_top"]))
+                st.markdown("**Attack — weakest** · " + _zone_list(zs["attack_bottom"]))
+            with zc2:
+                st.markdown("**Defence — strongest** · " + _zone_list(zs["defence_top"]))
+                st.markdown("**Defence — weakest** · " + _zone_list(zs["defence_bottom"]))
+            st.caption("Weakest ranks only zones the side actually occupies.")
     with tab_player:
         if sel_tok is None:
             st.caption("Click a player on the pitch to see their profile "
@@ -716,7 +760,7 @@ def main():
     layout_b = api.pitch_layout(r["team_b"], view)
 
     # S46 step 1b: both teams on one horizontal frame, controlled by toggles.
-    tg = st.columns(5)
+    tg = st.columns(6)
     show_a = tg[0].toggle(lbl(a), value=True, key="tg_show_a")
     show_b = tg[1].toggle(lbl(b), value=True, key="tg_show_b")
     show_heat = tg[2].toggle("Heatmap", value=True, key="tg_heat")
@@ -724,11 +768,20 @@ def main():
     battle = tg[4].toggle("Battle overlay", value=False, key="tg_battle",
                           help="Show A's attack vs B's defence on one frame "
                                "(overlap = contested zones) instead of one team.")
+    show_strength = tg[5].toggle(
+        "Zone strength", value=False, key="tg_strength",
+        help="Show the 'Show team' side's team-intrinsic zone-strength map "
+             "(attack or defence) on the pitch, in place of the occupancy heatmap.")
     battle_swap = False
-    if battle:
+    if battle and not show_strength:
         battle_swap = st.toggle(
             f"Swap battle: {lbl(b)} attack vs {lbl(a)} defence", value=False,
             key="tg_bswap")
+    strength_profile = "attack"
+    if show_strength:
+        strength_profile = st.radio(
+            "Strength surface", ["attack", "defence"], horizontal=True,
+            format_func=str.capitalize, key="strength_profile")
 
     # Highlight a player via a RELIABLE picker (replaces the fragile pitch-click
     # selection — Streamlit's native Plotly selection misroutes when toggles shift
@@ -758,15 +811,46 @@ def main():
                    "readability; the colour pickers tint the player tokens.")
     rgb_a, rgb_b = _hex_to_rgb(col_a), _hex_to_rgb(col_b)
 
+    # Zone-strength surface for the 'Show team' side (mutually exclusive with the
+    # occupancy heatmap — takes precedence in draw_pitch). 6x5 band×lane grid,
+    # MIN-MAX stretched to 0-1 (weakest occupied zone -> cold, strongest -> hot)
+    # because raw mean ratings are compressed; unoccupied/below-floor -> nan (drawn
+    # as transparent grass, not cold fill).
+    # Zone strengths for the SHOWN team (live, reflects swaps + matches the tokens).
+    zs = api.zone_strengths_for_team(con, team)
+    strength_grid = None
+    if show_strength:
+        if zs:
+            vals = zs[strength_profile]
+            present = [v for v in vals.values() if v is not None]
+            if present:
+                vmin, vmax = min(present), max(present)
+                rng = (vmax - vmin) or 1.0
+                def _cell(z):
+                    v = vals.get(z)
+                    return np.nan if v is None else (v - vmin) / rng
+                strength_grid = np.array(
+                    [[_cell(b * api.N_LANES + l) for l in range(api.N_LANES)]
+                     for b in range(api.N_BANDS)])
+
     fig = draw_pitch(
         r["team_a"], r["team_b"], view, side_a=a, side_b=b, surface_side=side,
         show_a=show_a, show_b=show_b, show_heat=show_heat, show_zones=show_zones,
         battle=battle, battle_swap=battle_swap,
         sel_side=sel_side, sel_slot=sel_slot,
         pitch_color=pitch_color, rgb_a=rgb_a, rgb_b=rgb_b,
-        surf_alpha=surf_alpha, surf_gamma=surf_gamma, fade_alpha=fade_alpha)
+        surf_alpha=surf_alpha, surf_gamma=surf_gamma, fade_alpha=fade_alpha,
+        strength_grid=strength_grid,
+        strength_scheme="warm" if strength_profile == "attack" else "cool")
     st.plotly_chart(fig, use_container_width=True, key="pitch")
-    if battle:
+    if show_strength:
+        st.caption(f"**Zone strength** — {lbl(side)}'s {strength_profile} map: "
+                   "mean rating of each zone's occupants (warm = attack, cool = "
+                   "defence). Shading **min–max stretched** within this team "
+                   "(palest = their weakest occupied zone, fullest = strongest); "
+                   "blank = zones they don't occupy. Occupancy heatmap / battle "
+                   "overlay are suppressed while this is on.")
+    elif battle:
         atk, dfn = (lbl(b), lbl(a)) if battle_swap else (lbl(a), lbl(b))
         st.caption(f"**Battle overlay** — {atk}'s attack (warm) vs {dfn}'s defence "
                    "(cool) on the shared frame; overlap = the contested zones.")
@@ -788,7 +872,7 @@ def main():
 
     # info panel still follows the sidebar "Show team" (3-tab restructure = 1c).
     render_panel(con, team, view, lbl(side), side, fmts, auto_fmt, P,
-                 r["team_a"], r["team_b"], lbl(a), lbl(b), sel_tok, profile)
+                 r["team_a"], r["team_b"], lbl(a), lbl(b), sel_tok, profile, zs)
 
     render_strategy(team, lbl(side))
 

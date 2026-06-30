@@ -622,6 +622,199 @@ def compute_attack_index(con, att, dfn, zxt, p2f, battle, gate, fmult, beta, cac
     return index
 
 
+# ----------------------------------------------------------------------------
+# Zone strengths (dashboard V3 step 6 -- docs/dashboard_v3_design.md §7).
+# TEAM-INTRINSIC, distinct from the threat index above: per board cell, the
+# team's OWN capability = 0.3*approach + 0.7*main of its one-sided
+# _team_side_score, using the zone's att (attack profile, ATTACK board) / def
+# (defence profile, DEFENCE board) attribute weights from zone_battle.json. NO
+# opponent, NO zone_xT, NO Bradley-Terry.
+#   PRODUCTION beta=0 (occ-weighted MEAN rating: "how good are the players who
+#   operate here"). S47 finding: beta=1 (Sum occ*quality) is r=0.93..0.997
+#   correlated with raw occupancy -> visually redundant with the heatmap; the
+#   beta=0 mean is r~=0 vs occupancy -> orthogonal, the view occupancy can't give.
+#   (--zones-diag quantifies it.) Occupancy still gates which zones are ranked
+#   (the OCC_FLOOR_FRAC floor) so a stray player in an empty zone can't top the
+#   list. Returns RAW per-zone mean ratings (compressed ~75-90) -> the display
+#   min-max stretches for contrast; attack & defence ranked independently.
+#   Read-only; reuses the item-7 side-score machinery verbatim.
+# ----------------------------------------------------------------------------
+STRENGTH_APPROACH_W, STRENGTH_MAIN_W = 0.3, 0.7   # local to this metric; this is
+# NOT the model's approach_gate (0.5) used by resolve_context/the threat path.
+# Weakness ranking ignores cells with occupancy below this fraction of the
+# profile's max-occupancy zone, so a "weakness" is a zone the team actually plays
+# in but is underpowered -- not an empty cell (e.g. the own goal-line corners,
+# which would otherwise trivially top every weakness list). Tunable.
+OCC_FLOOR_FRAC = 0.15
+
+
+def _one_sided_zone_score(roster, ctx, side, fmult, beta):
+    """One team's own capability in a zone for `side` ('att' or 'def'):
+    0.3*approach + 0.7*main, each stage a w-weighted mean of _team_side_score
+    over its duels. beta=1 -> Sum occ*quality (occupancy magnitude counts, so the
+    surface tracks occupancy); beta=0 -> occ-weighted MEAN quality (volume divided
+    out -> 'how good are the players who operate here', distinct from occupancy).
+    No opponent. None if the roster is empty (zone unoccupied)."""
+    if not roster:
+        return None
+    boost_key = side + "_boost"
+
+    def stage(duels):
+        tw = sum(d["w"] for d in duels) or 1.0
+        return sum(d["w"] * _team_side_score(roster, d[side], d.get(boost_key, []),
+                                             fmult, beta) for d in duels) / tw
+
+    return STRENGTH_APPROACH_W * stage(ctx["approach"]) + STRENGTH_MAIN_W * stage(ctx["main"])
+
+
+def _zone_label(z: int) -> dict:
+    """Board cell -> display meta: band 1-6 (6 = attacking end), lane 0-4,
+    authored zone key + context (via the same fold the threat path uses)."""
+    band, lane = divmod(z, N_LANES)
+    key, ctx_name = fold_zone(z)
+    return {"zone_id": z, "band": band + 1, "lane": lane,
+            "key": key, "context": ctx_name}
+
+
+def zone_strengths(con, nation: str, formation: str = "4-3-3",
+                   scores: dict | None = None, n_extreme: int = 3,
+                   beta: float = 0.0) -> dict | None:
+    """Team-intrinsic per-zone strength map (dashboard step 6, docs §7).
+    beta=0 (production) = occ-weighted MEAN rating per zone ("how good are the
+    players here", orthogonal to occupancy); beta=1 = Sum occ*rating (tracks
+    occupancy). Returns the 30-cell attack & defence RAW per-zone values over
+    OCCUPIED zones (below-floor / empty -> None), plus the top/bottom `n_extreme`
+    occupied zones of each. Values are NOT pre-normalised — the display min-max
+    stretches them (mean ratings are compressed). None if the nation can't be
+    assembled. Attack reads the ATTACK board + att weights; defence the DEFENCE
+    board + def weights."""
+    from src.load.v2_ingest.formation_assembly import load_config, compute_forwardness
+    if scores is None:
+        scores = selection_scores(con)
+    cfg, fwd = load_config(), compute_forwardness(con)
+    team = _assemble_team(con, nation, cfg, fwd, scores, formation)
+    if not team:
+        return None
+    out = zone_strengths_boards(con, team["boards"], team["sid"], n_extreme, beta)
+    return {"nation": nation, "formation": formation, **out}
+
+
+def zone_strengths_boards(con, boards: dict, sid: dict, n_extreme: int = 3,
+                          beta: float = 0.0) -> dict:
+    """Core zone-strength sweep over an ALREADY-ASSEMBLED team's phase `boards`
+    + slot->`sid` map. Factored out so the dashboard can pass the LIVE XI
+    (including player swaps), not just the auto-picked XI. Returns everything
+    except nation/formation (the caller adds those)."""
+    battle, p2f = load_cfgs()
+    fmult = battle["family_mult"]
+    cache = {}
+    atk_raw, dfn_raw, atk_occ, dfn_occ = {}, {}, {}, {}
+    for z in range(N_BANDS * N_LANES):
+        key, ctx_name = fold_zone(z)
+        ctx = battle["zones"][key][ctx_name]
+        atk_r = build_roster_from_board(con, boards["attack"], z, sid, p2f, cache)
+        dfn_r = build_roster_from_board(con, boards["defence"], z, sid, p2f, cache)
+        atk_occ[z] = sum(o for _, o in atk_r)
+        dfn_occ[z] = sum(o for _, o in dfn_r)
+        atk_raw[z] = _one_sided_zone_score(atk_r, ctx, "att", fmult, beta)
+        dfn_raw[z] = _one_sided_zone_score(dfn_r, ctx, "def", fmult, beta)
+
+    def build(raw, occ):
+        """Floor-gate to occupied zones; the per-zone value is the RAW mean
+        rating (beta=0). NOT pre-normalised — these are compressed (~75-90), so
+        the DISPLAY min-max stretches them for contrast (a max-only scale washes
+        out). Below-floor / empty -> None (masked on the surface, excluded from
+        the lists). Lists rank strongest & weakest occupied zones by raw rating."""
+        occ_max = max(occ.values(), default=0.0)
+        floor = OCC_FLOOR_FRAC * occ_max
+        valid = {z: v for z, v in raw.items()
+                 if v is not None and occ[z] >= floor}
+        out = {z: (round(valid[z], 1) if z in valid else None) for z in raw}
+        labf = lambda z: {**_zone_label(z), "score": out[z],
+                          "occ": round(occ[z], 3)}
+        order = sorted(valid, key=lambda z: -valid[z])
+        return (out, [labf(z) for z in order[:n_extreme]],
+                [labf(z) for z in order[-n_extreme:][::-1]])
+
+    atk, atk_top, atk_bot = build(atk_raw, atk_occ)
+    dfn, dfn_top, dfn_bot = build(dfn_raw, dfn_occ)
+    return {"attack": atk, "defence": dfn,
+            "attack_occ": atk_occ, "defence_occ": dfn_occ,
+            "attack_top": atk_top, "attack_bottom": atk_bot,
+            "defence_top": dfn_top, "defence_bottom": dfn_bot,
+            "meta": {z: _zone_label(z) for z in range(N_BANDS * N_LANES)}}
+
+
+def demo_zone_strengths(nation="ESP", formation="4-3-3"):
+    """Print a nation's normalised attack & defence zone-strength grids + the
+    top/bottom zones. Face-validity probe for dashboard step 6 (docs §7)."""
+    import duckdb
+    con = duckdb.connect(str(DB_PATH), read_only=True)
+    try:
+        zs = zone_strengths(con, nation, formation)
+    finally:
+        con.close()
+    if not zs:
+        print(f"could not assemble {nation}")
+        return
+    print(f"== {nation} ({formation}) zone strengths -- 0-100, max-zone per profile ==\n")
+    _fmt_grid(zs["attack"], "ATTACK strength (B6 = attacking end):", scale=1.0, dec=0)
+    print()
+    _fmt_grid(zs["defence"], "DEFENCE strength (B1 = own-goal end):", scale=1.0, dec=0)
+
+    def show(label, rows):
+        print(f"\n  {label:>17}: " + "   ".join(
+            f"B{r['band']}·L{r['lane']} {r['key']}={r['score']:.0f}(occ{r['occ']:.2f})"
+            for r in rows))
+
+    show("attack strongest", zs["attack_top"])
+    show("attack weakest", zs["attack_bottom"])
+    show("defence strongest", zs["defence_top"])
+    show("defence weakest", zs["defence_bottom"])
+
+
+def diagnose_zone_metric(nation="ESP", formation="4-3-3"):
+    """Quantify how distinct each strength variant is from raw occupancy, per
+    profile (over occupied zones): Pearson r of normalised occ*rating (beta=1)
+    vs occupancy, and of occ-weighted mean rating (beta=0) vs occupancy. Confirms
+    occ*rating tracks occupancy (high r) and mean-rating is genuinely different
+    (lower r). docs/dashboard_v3_design.md §7."""
+    import duckdb
+    import numpy as np
+    from src.load.v2_ingest.formation_assembly import load_config, compute_forwardness
+    battle, p2f = load_cfgs()
+    fmult = battle["family_mult"]
+    con = duckdb.connect(str(DB_PATH), read_only=True)
+    scores = selection_scores(con)
+    cfg, fwd = load_config(), compute_forwardness(con)
+    team = _assemble_team(con, nation, cfg, fwd, scores, formation)
+    if not team:
+        print(f"could not assemble {nation}"); con.close(); return
+    cache = {}
+    print(f"== {nation} ({formation}) zone metric vs occupancy "
+          f"(Pearson r over occupied zones, floor {OCC_FLOOR_FRAC}) ==\n")
+    for prof, side, board in (("attack", "att", "attack"),
+                              ("defence", "def", "defence")):
+        occ, b1, b0 = {}, {}, {}
+        for z in range(N_BANDS * N_LANES):
+            key, ctx_name = fold_zone(z)
+            ctx = battle["zones"][key][ctx_name]
+            roster = build_roster_from_board(con, team["boards"][board], z,
+                                             team["sid"], p2f, cache)
+            occ[z] = sum(o for _, o in roster)
+            b1[z] = _one_sided_zone_score(roster, ctx, side, fmult, 1.0)
+            b0[z] = _one_sided_zone_score(roster, ctx, side, fmult, 0.0)
+        occ_max = max(occ.values()) or 1.0
+        valid = [z for z in range(N_BANDS * N_LANES)
+                 if b1[z] is not None and occ[z] >= OCC_FLOOR_FRAC * occ_max]
+        o = np.array([occ[z] for z in valid])
+        r1 = float(np.corrcoef(o, [b1[z] for z in valid])[0, 1])
+        r0 = float(np.corrcoef(o, [b0[z] for z in valid])[0, 1])
+        print(f"  {prof:>7}: {len(valid)} occupied zones | "
+              f"r(occ×rating, occ) = {r1:.3f}   r(mean-rating, occ) = {r0:.3f}")
+    con.close()
+
+
 def fit_volume(formation: str = "4-3-3", target: float = 1.178):
     """Round-robin all nations -> attacking-value index distribution -> fit
     VOLUME so mean(team_xG) = target (~1.18 xG/team-match). Reports the spread."""
@@ -816,6 +1009,10 @@ def main():
                     help="demo bivariate-Poisson scoreline, FIFA3 A vs B")
     ap.add_argument("--validate-scoreline", action="store_true",
                     help="round-robin goals-dist + draw-rate vs empirical")
+    ap.add_argument("--zone-strengths", metavar="NAT",
+                    help="team-intrinsic zone strength map for a nation (FIFA3)")
+    ap.add_argument("--zones-diag", metavar="NAT",
+                    help="correlation of each strength variant vs occupancy (FIFA3)")
     ap.add_argument("--l3", type=float, default=0.0,
                     help="bivariate-Poisson covariance term (default 0)")
     a = ap.parse_args()
@@ -835,9 +1032,13 @@ def main():
         demo_scoreline(a.scoreline[0], a.scoreline[1], l3=a.l3)
     elif a.validate_scoreline:
         validate_scoreline(l3=a.l3)
+    elif a.zone_strengths:
+        demo_zone_strengths(a.zone_strengths)
+    elif a.zones_diag:
+        diagnose_zone_metric(a.zones_diag)
     else:
         print("try: --fold-table | --demo | --demo-real | --autoxi | --fit-volume "
-              "| --scoreline A B | --validate-scoreline")
+              "| --scoreline A B | --validate-scoreline | --zone-strengths NAT")
 
 
 if __name__ == "__main__":
