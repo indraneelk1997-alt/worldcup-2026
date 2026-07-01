@@ -745,6 +745,149 @@ def zone_strengths_boards(con, boards: dict, sid: dict, n_extreme: int = 3,
             "meta": {z: _zone_label(z) for z in range(N_BANDS * N_LANES)}}
 
 
+def zone_battle_detail(con, att_boards: dict, att_sid: dict, def_boards: dict,
+                       def_sid: dict, def_gk, zone_id: int) -> dict:
+    """Full A(attack)-vs-B(defence) contest for ONE zone at the model's REAL params
+    (approach_gate, aggregation_beta) — the opponent-relative view (dashboard 8a,
+    docs §8). Attacker roster = att attack board @ zone_id; defender = def defence
+    board @ mirror(zone_id) (same patch), exactly as compute_attack_index pairs
+    them. Pure over pre-assembled boards so the dashboard passes the SHOWN XIs.
+
+    Returns the four headline numbers -- each team's occ-weighted attribute-score
+    summation per stage (att_score/def_score), P(attacker prevails)=threat, and the
+    overall zone value (entry_share*P(win)*zone_xt*conv_factor) with components --
+    plus per-team detail: players desc by occ (with slot_no + playstyles) and the
+    occ-weighted per-attribute scores split Approach/Main."""
+    battle, p2f = load_cfgs()
+    gate, fmult = battle["approach_gate"], battle["family_mult"]
+    beta = battle.get("aggregation_beta", 1.0)
+    zxt = load_zone_xt(con)
+    cache = {}
+    key, ctx_name = fold_zone(zone_id)
+    ctx = battle["zones"][key][ctx_name]
+    mz = mirror_zone(zone_id)
+    att = build_roster_from_board(con, att_boards["attack"], zone_id, att_sid, p2f, cache)
+    dfn = build_roster_from_board(con, def_boards["defence"], mz, def_sid, p2f, cache)
+    threat, _ap, _mn, ap_rows, mn_rows = resolve_context(att, dfn, ctx, gate, fmult, beta)
+
+    # overall zone value (the compute_attack_index term)
+    occ_z = sum(o for _, o in att)
+    occ_tot = sum(sum(c["weight"] for c in att_boards["attack"].get(z, []))
+                  for z in range(N_BANDS * N_LANES)) or 1.0
+    entry_share = occ_z / occ_tot
+    xt_z, shot_share = zxt[zone_id]
+    fin = (_team_side_score(att, {"finishing": 0.5, "shot_power": 0.5},
+                            ["finishing"], fmult, 0.0) if att else 0.0)
+    conv_rel = 2.0 * fin / (fin + def_gk) if (def_gk and fin + def_gk > 0) else 1.0
+    conv_factor = (1.0 - shot_share) + shot_share * conv_rel
+    zone_value = entry_share * threat * xt_z * conv_factor
+
+    def stage_side(rows, idx):            # w-weighted mean of duel side-scores
+        tw = sum(r[1] for r in rows) or 1.0
+        return sum(r[1] * r[idx] for r in rows) / tw
+
+    def team_detail(roster, rev, side):
+        occ_tot_r = sum(o for _, o in roster) or 1.0
+        players = sorted(
+            [{"name": p["name"], "occ": round(o, 3), "slot_no": rev.get(p["sid"]),
+              "playstyles": sorted(p.get("fams", {}).keys())} for p, o in roster],
+            key=lambda r: -r["occ"])
+
+        def stage_attrs(duels):
+            wsum = {}
+            for d in duels:
+                for a, w in d[side].items():
+                    wsum[a] = wsum.get(a, 0.0) + w * d["w"]
+            return [{"attr": a, "weight": round(wsum[a], 2),
+                     "score": round(sum(o * p["attrs"][a] for p, o in roster)
+                                    / occ_tot_r, 1)}
+                    for a in sorted(wsum, key=lambda a: -wsum[a])]
+
+        return {"players": players, "approach": stage_attrs(ctx["approach"]),
+                "main": stage_attrs(ctx["main"])}
+
+    rev_att = {v: k for k, v in att_sid.items()}
+    rev_def = {v: k for k, v in def_sid.items()}
+    return {
+        "zone": {**_zone_label(zone_id), "mirror": mz},
+        "threat": threat,
+        "att_score": {"approach": round(stage_side(ap_rows, 2), 1),
+                      "main": round(stage_side(mn_rows, 2), 1)},
+        "def_score": {"approach": round(stage_side(ap_rows, 3), 1),
+                      "main": round(stage_side(mn_rows, 3), 1)},
+        "value": {"entry_share": round(entry_share, 4), "p_win": round(threat, 4),
+                  "zone_xt": round(xt_z, 4), "shot_share": round(shot_share, 3),
+                  "conv_factor": round(conv_factor, 3), "zone_value": zone_value},
+        "attacker": team_detail(att, rev_att, "att"),
+        "defender": team_detail(dfn, rev_def, "def"),
+    }
+
+
+def demo_zone_battle(nation_a="ESP", nation_b="ENG", zone_id=27, formation="4-3-3"):
+    """Print the A-attack-vs-B-defence battle detail for one zone. Face-validity
+    probe for dashboard 8a (docs §8). zone_id 27 = central_L1 box by default."""
+    import duckdb
+    from src.load.v2_ingest.formation_assembly import load_config, compute_forwardness
+    con = duckdb.connect(str(DB_PATH), read_only=True)
+    scores = selection_scores(con)
+    cfg, fwd = load_config(), compute_forwardness(con)
+    ta = _assemble_team(con, nation_a, cfg, fwd, scores, formation)
+    tb = _assemble_team(con, nation_b, cfg, fwd, scores, formation)
+    if not ta or not tb:
+        print(f"could not assemble {nation_a if not ta else nation_b}")
+        con.close(); return
+    d = zone_battle_detail(con, ta["boards"], ta["sid"], tb["boards"], tb["sid"],
+                           tb["gk"], zone_id)
+    con.close()
+    z = d["zone"]
+    print(f"== zone {z['zone_id']} B{z['band']}·L{z['lane']} {z['key']}/{z['context']} "
+          f"— {nation_a} attack vs {nation_b} defence ==\n")
+    v = d["value"]
+    print(f"  {nation_a} score (att)  approach {d['att_score']['approach']:.1f}  "
+          f"main {d['att_score']['main']:.1f}")
+    print(f"  {nation_b} score (def)  approach {d['def_score']['approach']:.1f}  "
+          f"main {d['def_score']['main']:.1f}")
+    print(f"  P({nation_a} prevails) = {d['threat']*100:.1f}%")
+    print(f"  zone value = {v['zone_value']*1000:.3f}e-3  "
+          f"(entry {v['entry_share']:.3f} × Pwin {v['p_win']:.3f} × xt {v['zone_xt']:.4f} "
+          f"× conv {v['conv_factor']:.3f}; shot_share {v['shot_share']:.2f})")
+    for team, side in ((nation_a, "attacker"), (nation_b, "defender")):
+        det = d[side]
+        print(f"\n  {team} — players by occ:")
+        for p in det["players"]:
+            ps = ("  playstyles: " + ", ".join(p["playstyles"])) if p["playstyles"] else ""
+            print(f"     {p['name']:<22} occ {p['occ']:.2f}  (slot {p['slot_no']}){ps}")
+        for stage in ("approach", "main"):
+            attrs = "  ".join(f"{a['attr']}={a['score']:.0f}" for a in det[stage])
+            print(f"     {stage:>8}: {attrs}")
+
+
+def demo_occ_boards(nation="ENG", formation="4-3-3"):
+    """Dump a team's ATTACK and DEFENCE board occupancy (summed over players) per
+    zone, so the attack-vs-defence asymmetry is visible: attackers pile into the
+    attacking end (band 6), defenders spread across the defensive third and sit off
+    the goal line (band 1 > band 1..2 > band 6), so the own-goal-line cell that the
+    mirror pairs against an attacker's box is naturally low. Both boards are
+    attack-oriented (B6 = this team's attacking end). Each player's board sums to
+    ~1, so each grid totals ~n_outfield."""
+    import duckdb
+    from src.load.v2_ingest.formation_assembly import load_config, compute_forwardness
+    con = duckdb.connect(str(DB_PATH), read_only=True)
+    scores = selection_scores(con)
+    cfg, fwd = load_config(), compute_forwardness(con)
+    team = _assemble_team(con, nation, cfg, fwd, scores, formation)
+    con.close()
+    if not team:
+        print(f"could not assemble {nation}"); return
+    for phase in ("attack", "defence"):
+        board = team["boards"][phase]
+        occ = {z: sum(c["weight"] for c in board.get(z, []))
+               for z in range(N_BANDS * N_LANES)}
+        _fmt_grid(occ, f"{nation} {phase} board occupancy "
+                  f"(B6 = {nation}'s attacking end, B1 = own goal):", dec=2)
+        print(f"   total = {sum(occ.values()):.2f}\n")
+
+
 def demo_zone_strengths(nation="ESP", formation="4-3-3"):
     """Print a nation's normalised attack & defence zone-strength grids + the
     top/bottom zones. Face-validity probe for dashboard step 6 (docs §7)."""
@@ -1013,6 +1156,10 @@ def main():
                     help="team-intrinsic zone strength map for a nation (FIFA3)")
     ap.add_argument("--zones-diag", metavar="NAT",
                     help="correlation of each strength variant vs occupancy (FIFA3)")
+    ap.add_argument("--zone-battle", nargs="+", metavar="A B [ZID]",
+                    help="A-attack-vs-B-defence battle detail for one zone (0-29)")
+    ap.add_argument("--occ-boards", metavar="NAT",
+                    help="dump a team's attack + defence board occupancy grids")
     ap.add_argument("--l3", type=float, default=0.0,
                     help="bivariate-Poisson covariance term (default 0)")
     a = ap.parse_args()
@@ -1036,6 +1183,12 @@ def main():
         demo_zone_strengths(a.zone_strengths)
     elif a.zones_diag:
         diagnose_zone_metric(a.zones_diag)
+    elif a.zone_battle:
+        zb = a.zone_battle
+        demo_zone_battle(zb[0], zb[1] if len(zb) > 1 else "ENG",
+                         int(zb[2]) if len(zb) > 2 else 27)
+    elif a.occ_boards:
+        demo_occ_boards(a.occ_boards)
     else:
         print("try: --fold-table | --demo | --demo-real | --autoxi | --fit-volume "
               "| --scoreline A B | --validate-scoreline | --zone-strengths NAT")

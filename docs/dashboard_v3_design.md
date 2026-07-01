@@ -400,3 +400,109 @@ the strength surface). Consequences:
 Zone strengths **sit beside** `strategy_notes` (the 5-axis text), not replace it —
 different lenses (spatial/structural vs stylistic). Revisit only if the panel feels
 redundant once 6b lands.
+
+## 8. S48 — zone battle inspector + panel 3-tab restructure (agreed, before code)
+
+Two goals: (1) **wrap up the zone-battle info** = a per-zone A-vs-B contest inspector
+(the opponent-relative signal deferred out of the strength metric in §7); (2) the
+**full 3-tab panel restructure** (§6.5). Agreed S48: inspector lives as a **section
+under the pitch** (next to the Highlight-player picker), NOT a panel tab; panel goes
+to the full 3-tab. **Read-only — no model logic / DB change.**
+
+### 8.1 Battle inspector — what it shows (the REAL matchup resolution)
+Unlike the strength metric (team-intrinsic, beta=0), the inspector shows the actual
+two-team zone battle at the **model's own params** (`approach_gate=0.5`,
+`aggregation_beta=1.0`) — this is where the opponent-relative signal belongs. For a
+selected physical zone `z`, default **A attack vs B defence** (a swap → B attack vs
+A defence), mirroring the S46 battle overlay:
+- attacker roster = attacker's **attack** board at `z`; defender roster = defender's
+  **defence** board at `mirror_zone(z)` (same physical patch) — exactly as
+  `compute_attack_index` pairs them.
+- `fold_zone(z)` → authored key + context (`attack_vs_defense` / `buildup_vs_pressure`).
+- `resolve_context(att, dfn, ctx, gate, fmult, beta)` already returns
+  `(threat, approach, main, ap_rows, mn_rows)` where each `*_rows` = per-duel
+  `(name, w, att_score, def_score, p_att)`. **The inspector surfaces exactly this**:
+  header = zone + context + **P(attacker prevails)=threat**; two stages
+  (Approach 0.5-gated, Main), each a small table of duels with both sides' weighted
+  attribute scores + `p_att`.
+- **Boost-giving playstyles** (the earlier 6c ask): per duel, list which PlayStyle
+  families boost each side (`duel["att_boost"]/["def_boost"]`) and which roster
+  players carry them (from `player["fams"]`) — computed in the adapter, not in the
+  model.
+- **Overall zone score** (added S48, Indraneel): alongside the duel breakdown, show
+  the model's per-zone attacking **value** =
+  `entry_share × P(win) × zone_xt × conv_factor` — the exact `compute_attack_index`
+  term. Because it carries **`zone_xt`** (high in the box), the final third's
+  importance shows even where occupancy is thin. This is how the attacking-third
+  question (S47 opener 2) gets judged — by *seeing* the value, not by re-tuning the
+  strength-surface floor. Report the components (`entry_share`, `p_win`, `zone_xt`,
+  `shot_share`, `conv_factor`) so the number is legible.
+
+### 8.1a S48 spec correction — the four headline numbers + per-team detail
+Clarified with Indraneel: the zone info panel shows, per selected zone:
+- **Team A score** and **Team B score** — each = the **occ-weighted attribute-score
+  summation** (`_team_side_score`, β=1 → Σ occ·q) of that team's players in the zone,
+  on the attacking side (A) / defending side (B) attributes. These are the two sides'
+  raw strengths (the inputs to the contest).
+- **P(attacker prevails)** = `threat` (the BT resolution of the two).
+- **Overall zone value** = `entry_share × P(win) × zone_xt × conv_factor` (the
+  `compute_attack_index` term; carries `zone_xt` so the final third shows through).
+
+Then, **per team**: players in the zone **descending by occupancy** → the
+**occ-weighted score of each attribute**, split into **Approach** and **Main**
+stages → the **playstyles** each player carries (the boost families). Per-attribute
+score = occ-weighted mean of the players' values (plain 0–99 quality, readable); the
+per-team headline score is the model's occ-weighted summation (Σ occ·q).
+
+### 8.2 Data shape (adapter → view)
+`zone_battle_detail(con, boards_att, sid_att, boards_def, sid_def, zone_id)`:
+```
+{ zone:{zone_id,band,lane,key,context}, threat: float,
+  value:{entry_share, p_win, zone_xt, shot_share, conv_factor, zone_value},
+  attacker:{roster:[(name,occ)]}, defender:{roster:[(name,occ)]},
+  approach:{score, duels:[{name,w,att_score,def_score,p_att,
+                           att_attrs:{a:w}, def_attrs:{a:w},
+                           att_boosts:[(player,fam,tier)], def_boosts:[...]}]},
+  main:{...} }
+```
+Pure over pre-assembled boards (mirrors `zone_strengths_boards`), so the view passes
+the SHOWN teams (swap-consistent, like §7's fix). `model_api.zone_battle_detail(con,
+team_att, team_def, zone_id)` wraps it with team names.
+
+### 8.3 Build sequence (one step at a time)
+- **8a (next):** model `zone_battle_detail` (+ boost extraction) in `zone_aggregate.py`
+  + a `model_api` adapter + CLI probe (`--zone-battle A B <zid>`). **Verify via CLI
+  before any UI** (mirrors the 6a discipline).
+- **8b:** UI — a **zone dropdown** (occupied zones, labelled band/lane/key) + a
+  **swap** toggle + the breakdown block under the pitch. Dropdown, not pitch-click
+  (S46 decision; click deferred to the web-app port).
+  - **Selecting a zone also highlights the pitch:** the **top-3-by-occupancy
+    players per team** in that zone are rendered with **their own kernels**
+    (battle-overlay style — Team A warm, Team B cool, overlap composites), the rest
+    faded. This is the banked "multi-player kernel select" (§6.7), now driven by
+    zone selection. Needs the adapter to return each roster entry's **`slot_no`**
+    (so the view can call `player_kernel(team, slot_no)`); `build_roster_from_board`
+    drops it, so recover slot_no via the reverse of the team's `{slot:sid}` map.
+- **8c:** panel **4-tab restructure** (revised S48 — Indraneel): **Team Stats**
+  (2-col: formation+subs | radar; + strategy + zone-strength lists), **Player Stats**
+  (2-col: identity/coverage | 5-attr multiselect), **Zone battle** (the breakdown
+  table — moved off the under-pitch section into its own tab; the zone *controls*
+  stay above the pitch since they drive the on-pitch highlight), **Probability
+  matrix** (the scoreline heatmap, from the expander). Pure view reshuffle — no
+  model change.
+
+### 8.4 Still open from S47 (parked unless raised)
+Live-verify of the swap fix — **DONE S48** (streamlit confirmed swaps move the
+surface/lists). The attacking-third floor question (opener 2) is **addressed by
+8.1's overall zone value** (carries zone_xt), not by changing the floor.
+
+### 8.5 Banked model note (S48) — defensive occupancy is positional, not reactive
+Verified via `--occ-boards ENG`: the defence board peaks in the defensive third
+(B2–B4 central ~0.57) and is thin at the own goal line (B1 ~0.10–0.23), because the
+occupancy kernels are **positional averages, not ball/threat-reactive** — defenders
+don't collapse into the box under an attack. So own-box defensive occupancy is
+genuinely low, and the mirror pairs an attacker's box cell against a low
+defender-occupancy cell. This is faithful to what the **scoreline model already
+runs on** (`compute_attack_index`), NOT an inspector bug. **Agreed S48: defer** a
+ball-reactive defensive-collapse / positioning refinement to a later scoreline pass
+(after the visual work) — it would change the scoreline model, so not slipped in here.

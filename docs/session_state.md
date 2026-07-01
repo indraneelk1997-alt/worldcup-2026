@@ -3,15 +3,17 @@
 > **Fast-changing.** This is "where we are right now." Updated at the end
 > of each working session. For permanent facts/rules, see `Claude.md`.
 
-**Last updated:** end of S47 (2026-06-30) — dashboard V3 **step 6 zone strengths**:
-team-intrinsic per-zone capability (item-7 side-score over a zone roster with the
-zone's att/def weights; no opponent/zone_xT/BT; combine 0.3·approach+0.7·main).
-**Production beta=0 (occ-weighted MEAN rating)** after `--zones-diag` showed beta=1
-(Σocc·rating) ≈ occupancy (r 0.93–0.997) while beta=0 is orthogonal (r≈0). On-pitch
-"Zone strength" toggle (Attack/Defence), min-max-stretched discrete-cell surface
-mutually exclusive with the occupancy heatmap; team-tab strongest/weakest lists;
-computed LIVE from the shown XI (swap-consistent). **Swap-consistency bug fixed
-(PENDING live re-verify after a clean streamlit restart).** No model/DB change.
+**Last updated:** end of S48 (2026-07-01) — dashboard V3 **zone battle inspector +
+4-tab panel** (8a–8c). New `zone_battle_detail`: per-zone A-attack-vs-B-defence
+contest at the model's real params (gate 0.5, β 1) — each side's occ-weighted
+attribute-score sum, P(attacker prevails), the `compute_attack_index` zone value
+(entry×Pwin×zone_xt×conv), + per-team players-by-occ, per-attribute Approach/Main
+scores, playstyles. UI: zone dropdown (default "— none —", resets when Zone-strength
+toggles off) + swap + On-pitch **top-3 kernel highlight** (attacker warm / defender
+cool, at attack/defence positions independent of the sidebar view) + gold zone
+border. Info panel → **4 tabs** (Team Stats / Player Stats / Zone battle /
+Probability matrix). Swap-fix (S47) verified live. Banked: positional
+(non-reactive) defensive occupancy → later scoreline pass. **No DB change (43 tables).**
 **Current version line:** **S42: position-aware XI selection + best-fit formation BUILT & verified.** Item 9 (`docs/item9_xi_selection.md`). Replaced group-only `autopick_xi` with empirical, side-aware slotting off a new `squad_position_eligibility` table (modal/>20%-minutes rule across Understat+FBref+StatsBomb, EA + coarse-group fallbacks) and Hungarian assignment. Headline bugs dead (Cucurella→LB not RCB, Kane→ST). `best_formation` auto-picks the max-fit shape per squad (FRA/ARG→3-5-2, ENG→4-1-4-1…). **DB now 42 tables** (added `squad_position_eligibility`; first DDL since S35 — a derived rollup, no FK; `db_schema.md` regenerated). **Dashboard V2** (same session): info-panel formation dropdown (default auto best-fit) + player swap, both live-recomputing. Player-stats panel is the only V2 piece left. Dashboard V1 (vertical formation pitch + strategy) BUILT & accepted (S41). Chessboard model COMPLETE — items 1–8 all DONE & validated.
 Item 8 step **E (bivariate Poisson → scoreline)** built + validated S38: a full
 team-vs-team matchup now runs end to end (adjusted attrs → occupancy boards → zone
@@ -20,6 +22,66 @@ battles → aggregated index → VOLUME → bivariate-Poisson scoreline). Accept
 band). `λ₃=0` LOCKED; `VOLUME=199.4` promoted to `zone_battle.json`. DB unchanged at
 **41 tables** (read-only orchestration; no DDL). **Next agenda: dashboard visual design**
 (+ full-tournament sim). Design doc: `docs/item8_aggregation.md`.
+
+## S48 — zone battle inspector + 4-tab panel (Cowork, shell-relay)
+
+Built the zone-battle inspector (8a–8c) on top of S47's zone strengths. Design in
+`docs/dashboard_v3_design.md` §8 (+8.1a/8.5). **No DB/DDL change (43 tables); all
+read-only model + view code.** Shell-relay throughout.
+
+### 8a — `zone_battle_detail` (model + adapter, CLI-verified)
+- `zone_aggregate.zone_battle_detail(con, att_boards, att_sid, def_boards, def_sid,
+  def_gk, zone_id)`: attacker attack-board roster @ z vs defender defence-board @
+  `mirror(z)`, resolved via `resolve_context` at the REAL params (approach_gate 0.5,
+  aggregation_beta 1). Returns four headline numbers (att/def occ-weighted
+  attribute-score sums per stage, `threat`=P(attacker prevails), and the
+  `compute_attack_index` **zone value** = entry_share×P(win)×zone_xt×conv_factor
+  with components) + per-team players desc-by-occ (with `slot_no` + playstyle
+  families) + occ-weighted per-attribute Approach/Main scores. Pure over
+  pre-assembled boards. `model_api.zone_battle_detail(con, team_att, team_def, zid)`
+  wraps it (shown XIs). CLI `--zone-battle A B [ZID]`.
+- **Verified + diagnosed the low defensive occupancy** (Indraneel flagged it): added
+  `--occ-boards NAT`. ENG defence board peaks B2–B4 central (~0.57), thin at B1
+  goal-line (0.10–0.23) — matches the ~0.22 the box battle summed. Confirmed
+  faithful (same board `compute_attack_index` uses), NOT a bug → §8.5 banked note.
+
+### 8b — inspector UI + on-pitch highlight
+- Zone controls **above the pitch** (drive the highlight): swap toggle, zone
+  dropdown (default **"— none —"**; resets to none when the Zone-strength toggle is
+  switched off; guarded against stale options after a swap), **On pitch** toggle.
+- On a picked zone: **top-3-by-occupancy players per team rendered with their own
+  kernels** (attacker warm / defender cool, summed, `_add_surface(grid_raw=…)`),
+  those tokens highlighted (rest faded), placed at **attack/defence positions**
+  (independent of the sidebar view — `zone_view` per side), plus a **gold zone
+  border** (`_zone_rect`, drawn whenever a zone is selected). draw_pitch precedence:
+  zone-battle highlight > zone strength > player kernel > battle overlay > occupancy.
+- `_add_tokens` now highlights a **set** of slots (`hi_slots`), not one.
+
+### 8c — info panel → 4 tabs
+`render_panel` rebuilt: **Team Stats** (2-col: formation+subs+strategy | radar; then
+zone-strength lists), **Player Stats** (unchanged body), **Zone battle** (the
+`render_zone_battle` breakdown, moved off the under-pitch section), **Probability
+matrix** (the scoreline heatmap, moved out of its expander). `render_strategy` now
+called inside the Team tab; the separate strategy strip + scoreline expander removed
+from `main`.
+
+### Files (S48, uncommitted until the commit below)
+- Modified: `src/load/v2_ingest/zone_aggregate.py` (zone_battle_detail,
+  demo_zone_battle, demo_occ_boards, `--zone-battle`/`--occ-boards`),
+  `dashboard/model_api.py` (zone_battle_detail adapter + import),
+  `dashboard/app.py` (render_zone_battle, zone controls, draw_pitch zone_hi/hi_zone,
+  _sum_kernels, _zone_rect, _add_surface grid_raw, _add_tokens hi_slots, 4-tab
+  render_panel), `docs/dashboard_v3_design.md` (§8), `docs/session_state.md`.
+- **No DDL / DB change** (43 tables; `db_schema.md` unchanged).
+
+### S49 openers
+1. Player Stats tab → the §6.7 **2-column** layout (identity/coverage | 5-attr
+   multiselect) — currently the S45 single-flow body; only Team Stats got 2-col.
+2. Banked model work (post-visuals, agreed S48): **ball-reactive defensive
+   positioning** (defenders don't collapse into the box — §8.5) + the other scoreline
+   refinements (defence-suppression, per-team formation objective).
+3. Banked bug: duplicate Lautaro Martínez in ARG XI (`autopick_xi`/Hungarian).
+4. Web-app port: click-to-select players/zones on the pitch (deferred from S46).
 
 ## S47 — dashboard V3 step 6: team-intrinsic ZONE STRENGTHS (Cowork, shell-relay)
 

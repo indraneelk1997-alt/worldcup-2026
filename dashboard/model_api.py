@@ -54,6 +54,7 @@ from src.load.v2_ingest.zone_aggregate import (          # noqa: E402
     _lambda_pair, bivariate_poisson_matrix, _matrix_summary,
     best_formation, slot_alternatives, zone_strengths as _zone_strengths,
     zone_strengths_boards as _zone_strengths_boards,
+    zone_battle_detail as _zone_battle_detail,
 )
 from src.load.v2_ingest.formation_assembly import assemble, team_boards  # noqa: E402
 from src.load.v2_ingest.kernel_transforms import (       # noqa: E402
@@ -366,6 +367,18 @@ def zone_strengths_for_team(con, team: dict, n_extreme: int = 3) -> dict:
     single board sweep is cheap, like matchup)."""
     out = _zone_strengths_boards(con, team["boards"], team["sid"], n_extreme)
     return {"nation": team["nation"], "formation": team["formation"], **out}
+
+
+def zone_battle_detail(con, team_att: dict, team_def: dict, zone_id: int) -> dict:
+    """A-attack-vs-B-defence contest detail for one zone (dashboard 8a). Takes two
+    ASSEMBLED teams (attacker, defender) so it reflects the shown XIs; caller swaps
+    the arguments for the reverse direction. Adds team names to the model payload."""
+    out = _zone_battle_detail(con, team_att["boards"], team_att["sid"],
+                              team_def["boards"], team_def["sid"],
+                              team_def.get("gk"), zone_id)
+    out["attacker"]["name"] = team_att["nation"]
+    out["defender"]["name"] = team_def["nation"]
+    return out
 
 
 # --------------------------------------------------------------------------- #

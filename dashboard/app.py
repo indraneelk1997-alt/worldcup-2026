@@ -152,11 +152,12 @@ def _colorscale(scheme: str, alpha: float):
 
 
 def _add_surface(fig, team, view, up, scheme, alpha, gamma, kernel_slot=None,
-                 grid_override=None) -> None:
+                 grid_override=None, grid_raw=None) -> None:
     """One team's surface, own-max normalised + gamma-shaped (contrast), drawn with
     a long warm/cool gradient. `grid_override` (a 6×5 array, e.g. zone strengths)
-    bypasses occupancy; else a selected player shows their kernel, otherwise the
-    team's occupancy surface for `view`."""
+    bypasses occupancy as a discrete map; `grid_raw` (e.g. a summed set of player
+    kernels) takes the smooth own-max path; else a selected player shows their
+    kernel, otherwise the team's occupancy surface for `view`."""
     if grid_override is not None:
         # Already 0-1 (min-max stretched upstream); nan = unoccupied -> stays nan
         # so the cell renders as transparent grass. Discrete cells (no smoothing)
@@ -164,8 +165,10 @@ def _add_surface(fig, team, view, up, scheme, alpha, gamma, kernel_slot=None,
         z = np.power(grid_override, gamma)
         smooth = False
     else:
-        grid = (api.player_kernel(team, kernel_slot, view)
-                if kernel_slot is not None else None)
+        grid = grid_raw
+        if grid is None:
+            grid = (api.player_kernel(team, kernel_slot, view)
+                    if kernel_slot is not None else None)
         if grid is None:
             grid = api.team_heatmap(team, view)
         zmax = float(grid.max()) or 1.0
@@ -178,15 +181,28 @@ def _add_surface(fig, team, view, up, scheme, alpha, gamma, kernel_slot=None,
         showscale=False, hoverinfo="skip", colorscale=_colorscale(scheme, alpha)))
 
 
-def _add_tokens(fig, layout, up, sel_slot, edge_rgb, global_sel,
+def _sum_kernels(team, slots, view):
+    """Sum the occupancy kernels of `slots` (a list of slot_no) for one team, in
+    `view`. -> a 6×5 grid (or None if none had a kernel, e.g. all GK)."""
+    g = None
+    for s in slots:
+        k = api.player_kernel(team, s, view)
+        if k is not None:
+            g = k.copy() if g is None else g + k
+    return g
+
+
+def _add_tokens(fig, layout, up, hi_slots, edge_rgb, global_sel,
                 base_alpha, fade_alpha) -> int:
     """One team's token trace (markers + code) + a surname/ovr label trace. Returns
     the selectable marker trace's curve index. Team identity = marker EDGE colour;
     group = fill. Fade lives in the colour ALPHA (not marker.opacity) and the trace
     disables Plotly's own selection dimming, so there's ONE clean fade level —
-    selected token full + enlarged, all others (both teams) dimmed to fade_alpha."""
+    highlighted tokens (in `hi_slots`) full + enlarged, all others (both teams)
+    dimmed to fade_alpha."""
+    hi_slots = set(hi_slots or ())
     pts = [_vmap(t["band"], t["lane"], up) for t in layout]
-    is_sel = [t["slot_no"] == sel_slot for t in layout]
+    is_sel = [t["slot_no"] in hi_slots for t in layout]
 
     def a_for(s):
         return 1.0 if s else (fade_alpha if global_sel else base_alpha)
@@ -233,12 +249,27 @@ def _zone_lines():
 _RGB_A, _RGB_B = (220, 38, 38), (37, 99, 235)
 
 
+def _zone_rect(zone_id: int, up: bool):
+    """Closed rectangle (xs, ys) tracing the selected zone's cell on the pitch, in
+    the attacker's orientation (same physical patch either way)."""
+    W, L = api.PITCH_WID, api.PITCH_LEN
+    band, lane = divmod(zone_id, api.N_LANES)
+    if up:
+        x0, x1 = band / api.N_BANDS * L, (band + 1) / api.N_BANDS * L
+        y0, y1 = W - (lane + 1) / api.N_LANES * W, W - lane / api.N_LANES * W
+    else:
+        x0, x1 = L - (band + 1) / api.N_BANDS * L, L - band / api.N_BANDS * L
+        y0, y1 = lane / api.N_LANES * W, (lane + 1) / api.N_LANES * W
+    return [x0, x1, x1, x0, x0], [y0, y0, y1, y1, y0]
+
+
 def draw_pitch(team_a, team_b, view, *, side_a, side_b, show_a, show_b, show_heat,
                show_zones, battle=False, battle_swap=False, surface_side=None,
                sel_side=None, sel_slot=None, pitch_color=PITCH,
                rgb_a=_RGB_A, rgb_b=_RGB_B, surf_alpha=0.55, surf_gamma=1.0,
                base_alpha=0.9, fade_alpha=0.25,
-               strength_grid=None, strength_scheme="warm"):
+               strength_grid=None, strength_scheme="warm", zone_hi=None,
+               hi_zone=None):
     """Horizontal two-team pitch (S46). A attacks L->R, B R->L. Surfaces use warm
     (A) / cool (B) gradients; with a player selected, only THAT player's kernel is
     drawn (their team's scheme). Highlight is driven by (sel_side, sel_slot) from
@@ -254,12 +285,17 @@ def draw_pitch(team_a, team_b, view, *, side_a, side_b, show_a, show_b, show_hea
     vb = ("attack" if battle_swap else "defense") if battle else view
     fig = go.Figure()
 
-    # 1. surface (under everything). Priority: ZONE STRENGTH (the 'Show team'
-    #    side's attack/defence map — mutually exclusive with the occupancy heatmap,
-    #    so only one is ever active) > selected player's kernel > battle overlay
-    #    (A-attack warm vs B-defense cool, mirrored) > one team's occupancy.
-    #    Both teams' TOKENS always show.
-    if strength_grid is not None:
+    # 1. surface (under everything). Priority: ZONE-BATTLE highlight (selected
+    #    zone's top-N players per team, own kernels, warm A / cool B) > zone
+    #    strength > selected player's kernel > battle overlay > one team's
+    #    occupancy. Both teams' TOKENS always show.
+    if zone_hi:
+        for grp in zone_hi.values():
+            g = _sum_kernels(grp["team"], grp["slots"], grp["view"])
+            if g is not None:
+                _add_surface(fig, None, grp["view"], grp["up"], grp["scheme"],
+                             surf_alpha, surf_gamma, grid_raw=g)
+    elif strength_grid is not None:
         _add_surface(fig, None, None, surface_side == side_a, strength_scheme,
                      surf_alpha, surf_gamma, grid_override=strength_grid)
     elif show_heat:
@@ -290,15 +326,36 @@ def draw_pitch(team_a, team_b, view, *, side_a, side_b, show_a, show_b, show_hea
             x=zx, y=zy, mode="lines", hoverinfo="skip",
             line=dict(color="rgba(255,255,255,0.5)", width=1, dash="dot")))
 
+    # 3b. selected zone border (bright outline of the inspected cell)
+    if hi_zone is not None:
+        zid, zup = hi_zone
+        zrx, zry = _zone_rect(zid, zup)
+        fig.add_trace(go.Scatter(x=zrx, y=zry, mode="lines", hoverinfo="skip",
+                                 line=dict(color="#facc15", width=3)))
+
     # 4. tokens per shown team (each at its own battle phase va/vb so the two
-    #    teams aren't both in the same phase)
+    #    teams aren't both in the same phase). Highlighted = player pick + the
+    #    zone-battle top-N for that side.
+    zone_slots, zone_view = {}, {}
+    if zone_hi:
+        for grp in zone_hi.values():
+            zone_slots.setdefault(grp["side"], set()).update(
+                s for s in grp["slots"] if s is not None)
+            zone_view[grp["side"]] = grp["view"]   # attacker->attack, defender->defense
+    global_sel = has_sel or bool(zone_hi)
     for team, up, side, edge, tview in ((team_a, True, side_a, rgb_a, va),
                                         (team_b, False, side_b, rgb_b, vb)):
         if not (show_a if side == side_a else show_b):
             continue
-        layout = api.pitch_layout(team, tview)
-        _add_tokens(fig, layout, up, sel_slot if sel_side == side else None, edge,
-                    has_sel, base_alpha, fade_alpha)
+        hi = set(zone_slots.get(side, set()))
+        if has_sel and sel_side == side:
+            hi.add(sel_slot)
+        # In zone-battle mode place tokens by attack/defence phase (attacker=attack,
+        # defender=defence), independent of the sidebar view — so positions match
+        # the kernels and the contest.
+        tv = zone_view.get(side, tview)
+        layout = api.pitch_layout(team, tv)
+        _add_tokens(fig, layout, up, hi, edge, global_sel, base_alpha, fade_alpha)
 
     fig.update_xaxes(visible=False, range=[-6, L + 6])
     fig.update_yaxes(visible=False, range=[-6, W + 6], scaleanchor="x", scaleratio=1)
@@ -515,36 +572,78 @@ def _zone_list(rows: list[dict]) -> str:
     return "  ·  ".join(f"{r['key']} (B{r['band']}) — {r['score']:.0f}" for r in rows)
 
 
+def render_zone_battle(d: dict, n_att: str, n_def: str) -> None:
+    """Zone battle inspector body (8b) from a precomputed detail dict: four headline
+    numbers (each side's occ-weighted attribute-score sum, P(attacker prevails),
+    overall zone value) + per-team players (desc by occ) with playstyles and the
+    occ-weighted per-attribute Approach/Main scores."""
+    z, v = d["zone"], d["value"]
+    st.caption(f"**B{z['band']}·L{z['lane']}** · {z['key']} · {z['context']}")
+    m = st.columns(4)
+    m[0].metric(f"{n_att} (att)", f"{d['att_score']['main']:.0f}",
+                help="Occ-weighted attribute-score sum · approach "
+                     f"{d['att_score']['approach']:.0f} / main "
+                     f"{d['att_score']['main']:.0f}")
+    m[1].metric(f"{n_def} (def)", f"{d['def_score']['main']:.0f}",
+                help=f"approach {d['def_score']['approach']:.0f} / main "
+                     f"{d['def_score']['main']:.0f}")
+    m[2].metric(f"P({n_att} prevails)", f"{d['threat'] * 100:.0f}%")
+    m[3].metric("Zone value ×10³", f"{v['zone_value'] * 1000:.2f}",
+                help=f"entry {v['entry_share']:.3f} × Pwin {v['p_win']:.3f} × "
+                     f"zone_xT {v['zone_xt']:.4f} × conv {v['conv_factor']:.3f} "
+                     f"(shot_share {v['shot_share']:.2f})")
+    for col, side, name in zip(st.columns(2), ("attacker", "defender"),
+                               (n_att, n_def)):
+        det = d[side]
+        with col:
+            st.markdown(f"**{name}** — by occupancy")
+            for p in det["players"][:6]:
+                ps = (" · _" + ", ".join(p["playstyles"]) + "_") if p["playstyles"] else ""
+                st.markdown(f"`{p['occ']:.2f}`  {p['name']}{ps}")
+            for stage in ("approach", "main"):
+                if det[stage]:
+                    attrs = "  ".join(f"{x['attr']} **{x['score']:.0f}**"
+                                      for x in det[stage])
+                    st.markdown(f"*{stage.capitalize()}* — {attrs}")
+
+
 def render_panel(con, team: dict, view: str, name: str, nation: str,
                  fmts: list[str], auto_fmt: str, P: dict,
                  team_a: dict, team_b: dict, name_a: str, name_b: str,
                  sel_tok: dict | None = None, profile: dict | None = None,
-                 zs: dict | None = None) -> None:
-    """Info panel, V3: a Team tab (formation knob + two-team playstyle radar +
-    swaps) and a Player tab (populated by pitch selection — step 3/4)."""
-    tab_team, tab_player = st.tabs(["Team", "Player"])
+                 zs: dict | None = None, zb_detail: dict | None = None,
+                 n_att: str | None = None, n_def: str | None = None,
+                 matrix=None, code_a: str | None = None,
+                 code_b: str | None = None) -> None:
+    """Info panel (V3, 8c) — four tabs: Team Stats (2-col formation+subs+strategy |
+    radar, then zone-strength lists), Player Stats, Zone battle (the A-vs-B
+    breakdown; its zone CONTROLS live above the pitch and drive the on-pitch
+    highlight), and Probability matrix (the scoreline heatmap)."""
+    tab_team, tab_player, tab_zone, tab_prob = st.tabs(
+        ["Team Stats", "Player Stats", "Zone battle", "Probability matrix"])
+
     with tab_team:
         st.subheader(name)
-        # knob 1 — formation: current shape shown, dropdown to change; the radar
-        # and the pitch below reassemble for the chosen shape.
-        st.selectbox("Formation", fmts, key=f"fmt_{nation}",
-                     help="Defaults to the auto-picked best-fit shape; change it to "
-                          "re-pick this squad's XI for a different formation.")
-        gk = (f"{team['gk_name']} ({team['gk_ovr']})" if team.get("gk_ovr")
-              else team.get("gk_name") or "—")
-        auto = " · auto best-fit" if team["formation"] == auto_fmt else ""
-        st.caption(f"{VIEW_LABELS[view]} · GK {gk}{auto}")
-        st.caption("Playstyle (0–1 percentile vs the field) — both teams "
-                   "overlaid (red / blue per legend)")
-        st.plotly_chart(radar_chart(team_a, team_b, name_a, name_b),
-                        use_container_width=True)
-        _render_swaps(con, team, nation, P)
-
+        left, right = st.columns(2)
+        with left:
+            st.selectbox("Formation", fmts, key=f"fmt_{nation}",
+                         help="Defaults to the auto best-fit shape; change it to "
+                              "re-pick this squad's XI for a different formation.")
+            gk = (f"{team['gk_name']} ({team['gk_ovr']})" if team.get("gk_ovr")
+                  else team.get("gk_name") or "—")
+            auto = " · auto best-fit" if team["formation"] == auto_fmt else ""
+            st.caption(f"{VIEW_LABELS[view]} · GK {gk}{auto}")
+            _render_swaps(con, team, nation, P)
+            render_strategy(team, name)
+        with right:
+            st.caption("Playstyle (0–1 percentile vs the field) — both teams "
+                       "overlaid (red / blue)")
+            st.plotly_chart(radar_chart(team_a, team_b, name_a, name_b),
+                            use_container_width=True)
         st.divider()
         st.caption("**Zone strengths** — mean adjusted rating of the players who "
                    "occupy each zone (≈75–90; higher = stronger occupants). "
-                   "Team-intrinsic: no opponent, orthogonal to occupancy. Toggle "
-                   "the surface on the pitch (shading is min–max stretched).")
+                   "Team-intrinsic; toggle the surface on the pitch.")
         if not zs:
             st.info("Zone strengths unavailable (squad could not be assembled).")
         else:
@@ -556,12 +655,29 @@ def render_panel(con, team: dict, view: str, name: str, nation: str,
                 st.markdown("**Defence — strongest** · " + _zone_list(zs["defence_top"]))
                 st.markdown("**Defence — weakest** · " + _zone_list(zs["defence_bottom"]))
             st.caption("Weakest ranks only zones the side actually occupies.")
+
     with tab_player:
         if sel_tok is None:
-            st.caption("Click a player on the pitch to see their profile "
-                       "(positions, playstyles, adjusted ratings).")
+            st.caption("Highlight a player (picker above the pitch) to see their "
+                       "profile — positions, playstyles, adjusted ratings.")
         else:
             _render_player(sel_tok, profile)
+
+    with tab_zone:
+        if zb_detail is None:
+            st.caption("Pick a zone in the **Zone battle** dropdown above the pitch "
+                       "(default *— none —*) to inspect that cell's A-vs-B contest.")
+        else:
+            st.caption(f"{n_att} attack vs {n_def} defence — pick the zone above "
+                       "the pitch (the outlined cell).")
+            render_zone_battle(zb_detail, n_att, n_def)
+
+    with tab_prob:
+        if matrix is not None:
+            st.caption(f"Rows = {name_a} goals · columns = {name_b} goals · "
+                       "darker blue = more likely.")
+            st.dataframe(style_scoreline(matrix, code_a, code_b),
+                         use_container_width=True)
 
 
 def render_strategy(team: dict, name: str) -> None:
@@ -796,6 +912,57 @@ def main():
                         key="hl_pick")
     sel_side, sel_slot = (pick[0] or None), pick[1]
 
+    # Zone-battle selection — controls sit above the pitch so the on-pitch kernel
+    # highlight can render this run; the breakdown table is drawn below the pitch.
+    zbc = st.columns([0.34, 0.46, 0.20])
+    zb_swap = zbc[0].toggle(f"Swap ({lbl(b)} attack)", key="zb_swap")
+    t_att, t_def = (r["team_b"], r["team_a"]) if zb_swap else (r["team_a"], r["team_b"])
+    n_att, n_def = (lbl(b), lbl(a)) if zb_swap else (lbl(a), lbl(b))
+    att_side, att_up = (b, False) if zb_swap else (a, True)
+    def_side, def_up = (a, True) if zb_swap else (b, False)
+    zb_occ = {z: sum(c["weight"] for c in t_att["boards"]["attack"].get(z, []))
+              for z in range(api.N_BANDS * api.N_LANES)}
+    # "— none —" (None) first + defaulted to, so the pitch keeps its normal surface
+    # until a zone is deliberately picked.
+    zb_opts = [None] + [z for z in sorted(zb_occ, key=lambda z: -zb_occ[z])
+                        if zb_occ[z] > 0.05]
+
+    def _zlabel(z):
+        if z is None:
+            return "— none —"
+        bd, ln = divmod(z, api.N_LANES)
+        return f"B{bd + 1}·L{ln} · occ {zb_occ[z]:.2f}"
+
+    # When the Zone-strength surface is switched OFF, reset the zone-battle
+    # selection to "— none —" (they're used together; avoids a stale highlight
+    # lingering once you leave zone-strength mode). Also guard against a persisted
+    # zone that's no longer an option (e.g. after a swap changes the attacker).
+    if st.session_state.get("_zb_prev_strength", show_strength) and not show_strength:
+        st.session_state["zb_zone"] = None
+    st.session_state["_zb_prev_strength"] = show_strength
+    if st.session_state.get("zb_zone") not in zb_opts:
+        st.session_state["zb_zone"] = None
+    zsel = zbc[1].selectbox(f"Zone battle — {n_att} attack vs {n_def} defence",
+                            zb_opts, format_func=_zlabel, key="zb_zone")
+    zb_on = zbc[2].toggle("On pitch", value=True, key="zb_pitch",
+                          help="When a zone is picked, highlight its top-3 players "
+                               "per team with their kernels (warm A / cool B), at "
+                               "attack/defence positions; overrides the surface.")
+    zb_detail, zone_hi, hi_zone = None, None, None
+    if zsel is not None:
+        zb_detail = api.zone_battle_detail(con, t_att, t_def, zsel)
+        hi_zone = (zsel, att_up)        # outline the inspected cell (kernels or not)
+        if zb_on:
+            atk = [p["slot_no"] for p in zb_detail["attacker"]["players"][:3]
+                   if p["slot_no"] is not None]
+            dfd = [p["slot_no"] for p in zb_detail["defender"]["players"][:3]
+                   if p["slot_no"] is not None]
+            zone_hi = {
+                "att": {"team": t_att, "side": att_side, "up": att_up,
+                        "slots": atk, "view": "attack", "scheme": "warm"},
+                "def": {"team": t_def, "side": def_side, "up": def_up,
+                        "slots": dfd, "view": "defense", "scheme": "cool"}}
+
     with st.expander("⚙️ Pitch appearance"):
         ac = st.columns(5)
         pitch_color = ac[0].color_picker("Pitch", PITCH, key="ap_pitch")
@@ -841,9 +1008,14 @@ def main():
         pitch_color=pitch_color, rgb_a=rgb_a, rgb_b=rgb_b,
         surf_alpha=surf_alpha, surf_gamma=surf_gamma, fade_alpha=fade_alpha,
         strength_grid=strength_grid,
-        strength_scheme="warm" if strength_profile == "attack" else "cool")
+        strength_scheme="warm" if strength_profile == "attack" else "cool",
+        zone_hi=zone_hi, hi_zone=hi_zone)
     st.plotly_chart(fig, use_container_width=True, key="pitch")
-    if show_strength:
+    if zone_hi:
+        st.caption(f"**Zone battle highlight** — top-3 by occupancy: {n_att} attack "
+                   f"(warm) vs {n_def} defence (cool) for the selected zone. "
+                   "Overrides the occupancy/strength surface while 'On pitch' is on.")
+    elif show_strength:
         st.caption(f"**Zone strength** — {lbl(side)}'s {strength_profile} map: "
                    "mean rating of each zone's occupants (warm = attack, cool = "
                    "defence). Shading **min–max stretched** within this team "
@@ -870,16 +1042,12 @@ def main():
     profile = (api.player_profile(con, srid, sel_tok.get("ea_id"))
                if sel_tok is not None else None)
 
-    # info panel still follows the sidebar "Show team" (3-tab restructure = 1c).
+    # info panel (4 tabs); follows the sidebar "Show team" for Team/Player, but
+    # Zone battle + Probability are two-team. Strategy + scoreline now live in tabs.
     render_panel(con, team, view, lbl(side), side, fmts, auto_fmt, P,
-                 r["team_a"], r["team_b"], lbl(a), lbl(b), sel_tok, profile, zs)
-
-    render_strategy(team, lbl(side))
-
-    with st.expander("Scoreline probability matrix", expanded=True):
-        st.caption(f"Rows = {lbl(a)} goals · columns = {lbl(b)} goals · "
-                   "darker blue = more likely.")
-        st.dataframe(style_scoreline(r["matrix"], a, b), use_container_width=True)
+                 r["team_a"], r["team_b"], lbl(a), lbl(b), sel_tok, profile, zs,
+                 zb_detail=zb_detail, n_att=n_att, n_def=n_def,
+                 matrix=r["matrix"], code_a=a, code_b=b)
 
 
 if __name__ == "__main__":
